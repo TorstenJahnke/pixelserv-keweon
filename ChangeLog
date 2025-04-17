@@ -1,0 +1,216 @@
+2019-12-13 v2.3.1
+
+* NEW check and purge expired certs on-the-fly. Generate new ones to replace the expired automatically.
+* NEW support the new TLS requirements on key size, cert valid period & etc from Debian 10 and Apple Inc.
+  Included findings & code contributed by emeidi and jackyaz.
+* CHANGED fix compilation warnings with gcc-9/clang-9 (issue #33) contributed by KiloFoxtrotPapa.
+* CHANGED add logging on LEVEL 2 when a client disconnects before a response is sent i.e. a 'cly' event
+
+2018-12-30 v2.2.1
+
+* NEW log TLS version for each access in log LEVEL 4
+* NEW support MacOS/Homebrew
+* NEW "zrt" counter on servstats page, 0-RTT aka Early Data in TLS 1.3
+* NEW a logo/favicon for pixelserv-tls by @eclp on snbforum
+* NEW save all cached certs to "CERT_PATH/prefetch" on signal SIGUSR1
+* CHANGED save all cached certs on program shutdown (previously only top 3 quarters)
+* CHANGED default "cert cache size", "-c" CLI option to 500 (previously 50)
+* CHANGED default to URL redirection disabled
+* CHANGED redefine '-R' CLI option to "enable URL redirection" (opposite of old definition)
+* CHANGED reduce "HTTP keep-alive" time, "-O" CLI option to 120s  (previously 300s)
+* CHANGED improve accuraracy in average and maximum processing time, "avg" and "tmx"
+* CHANGED improve browser compatibility for the servstats page
+* CHANGED improve CORS compatibility in request responses
+* CHANGED improve blocking of graphical ads during YouTube playback
+* CHANGED improve overall stability and robustness
+* CHANGED improve compatibility in linking static binary
+* CHANGED combine "sst" and "ssh" into a single "ssh" counter
+* CHANGED deprecate "sta," "stt" and "tmo" counters
+* CHANGED deprecate '-o SELECT_TIMEOUT' CLI option
+* CHANGED update to manpage
+* FIXED a crash bug in log LEVEL >= 4
+
+2018-10-9 v2.2.0
+
+* NEW support TLS 1.3
+* NEW support 0-RTT in TLS 1.3
+* NEW TLS 1.3 requires OpenSSL version >= 1.1.1
+* NEW TLS 1.3 support autodetected and enabled at compile time. No special configuration needed.
+* NEW counters v13, v12, v10 - breakdown of slh & slc requests into TLS versions.
+  # of requests in TLS 1.3, TLS 1.2 and TLS 1.0 respectively.
+* NEW indicator of TLS 1.3 support on servstats page.
+  `no_tls1_3` when compiled against OpenSSL <= v1.1.0.
+  `tls1_3` when compiled against OpenSSL >= 1.1.1
+* NEW counter ucb - bad certificates as reported by clients.
+* NEW counter ush - shutdown by clients after ServerHello.
+* NEW log "shutdown after ServerHello" on LEVEL 2.
+* NEW log "Handshake failed: socket i/o error" on LEVEL 2.
+* NEW log "Handshake failed: reached max retries" on LEVEL 2.
+* CHANGED enhance uniqueness of serial numbers for generated certificates.
+* CHANGED much faster logging to syslog.
+* CHANGED relax memory pool restriction for better multithread performance 
+* CHANGED increase number of retries in TLS handshakes.
+* CHANGED improve accuracy in processing time of requests recovered from initially failed handshakes.
+* FIXED various complaints from musl libc on Alpine Linux (contributed by JohnNilsson on Github; issue #16)
+* FIXED clean up compile warnings seen on newer platforms
+* FIXED replace deprecated OpenSSL APIs
+
+2018-6-20 v2.1.2
+
+* NEW support "--enable-static" for building static binary using GNU Autotools. (Issue #13)
+* CHANGED move other TLS handshake errors from log LEVEL 5 to 2.
+* FIXED missing client ip in logging TLS handshake errors in some situations.
+
+2018-4-15 v2.1.1
+
+* FIXED 404 error on /ca.crt
+
+2018-4-12 v2.1.0
+
+* NEW cache frequently used SSL certs in memory.
+* NEW enable SSL session cache and resumptions.
+* NEW prefetch SSL certs from disk on startup
+* NEW save top 3/4 of mostly frequently used SSL certs to disk on exit.
+* NEW counters `sct`, `sch`, `scm` and `scp` to register operations of caching SSL certs.
+* NEW counters `sst`, `ssh`, `ssm` and `ssp` to register operations of cached sessions and resumptions.
+* NEW option `-c` to specify cache size for SSL certs.
+* NEW counters `uca` and `uce` to better classify TLS handshake failures
+* NEW logging client ip and port and server name for `uca` and `uce` failures
+* NEW URI `/ca.crt` to download and import users' Pixelserv CA on client devices.
+* NEW crypto and disk benchmark for gauging performance of most timing sensitve routines in pixelserv-tls.
+* NEW CLI option `-B` with optional argument to run crypto and disk benchmark.
+* NEW preliminary support for Cross-Origin Resource Sharing (CORS).
+* NEW support TLSv1.0 for wider compatibility with old clients.
+* NEW port for administration. Optional but when used, it faciliates setup of firewall rules to restrict access to 'administrative' URIs such as '/log=' and '/servstats'.
+* NEW ARMv8 64-bit build target (aka aarch64) in Makefile-XC. Proven to work in ASUS RT-AC86U.
+* NEW ability to run without CA cert. In this mode pixelserv-tls will act as SNI servers.
+* CHANGED improvement in TLS handshake handling. Added retries for better chance of success from troubled clients.
+* CHANGED reduced socket latency inside service threads.
+* CHANGED default HTTP_KEEPALIVE to 5 mins for boosting chance of reusing service threads and HTTP/1.1 persistent connections.
+* CHANGED default CERT_PATH to /var/cache/pixelserv for non-Entware builds.
+* CHANGED `slu` description to "other TLS handshake errors." Possible causes such as clients without CA cert, mismatch in TLS protocol version or other parameters.
+* CHANGED removal of fork() code. Now pthread only for multiprocessing.
+* CHANGED added support for glibc < 2.17 and OpenSSL 1.0.1
+* FIXED race condition between reading CA's private key and dropping root
+* FIXED crash on non-FQDN hostname (#9)
+
+2017-12-12 v2.0.1
+
+* FIXED the 'stuck' issue
+* FIXED three crash bugs (#7 & #8)
+* FIXED incorrect logics of select() in the main event loop
+* FIXED a memory leak on failure to create a service thread for HTTPS
+* FIXED OpenSSL 1.1.x compatibility for Autotools (#6)
+* CHANGED more efficient check for next request in a service thread
+* CHANGED '-o SELECT_TIMEOUT' default to 10s
+* NEW backtrace on crash
+
+2017-11-28 v2.0.0
+
+* NEW support for HTTP/1.1 persistent connections
+* NEW hugely increased scalability on concurrent connections & reduced memory requirement
+* NEW logging facility. Six levels of granularities. No more chopped messages in syslog.
+* NEW support for HTTP POST method & logging POST content (with -l 4)
+* NEW added option '-O keepalive_time' to specify idle timeout of persistent connections
+* NEW added option '-T max_threads' to specify maximum allowed service threads 
+* NEW added option '-l level' to specify log level
+* NEW added counters kcc, kmx, kvg, krq & clt related to persistent connections
+* NEW added a MAN page as part of effort to bring pixelserv-tls more Linux
+* NEW support for TCP Fast Open. Require Linux kernel >= 3.16.
+* NEW support for GNU Autotools. Easier for native Linux systems to build and install.
+* CHANGED default select_timeout to 1s
+* CHANGED reviewed & updated log messages
+* CHANGED descriptions of a few counters on servstats page
+* CHANGED refactored SSL code & clean up connection handler
+* CHANGED removed legacy build.sh from code repository
+* CHANGED version naming scheme to MAJOR.MINOR.MICRO
+* CHANGED enhanced ring buffer handling in certificate generations
+* FIXED no matching cipher when servstats page is accessed using IP address
+* FIXED measurement of POST processing time
+* FIXED compilation failure on LEDGE due to missing TEMP_RETRY_FAILURE (thanks to a fix from laoshaw@github)
+* FIXED crash when the CA certificate is not available on startup.
+
+2017-9-18 version Kk
+
+* Added support for HTTP OPTIONS method. (Issue reported by Popov on snbforums)
+* Added experimental support for HSTS
+* Added a new counter 'slc' that counts the number of clients who disconnect 
+  without sending any data. It usually indicates clients not have ca.crt installed.
+* Added new counter 'cly' - client disconnect before response sent
+* Fixed certificates generated for erroneous domains under extreme load
+* Fixed crashes when non-SNI requests are received [reported by Popov@snb]
+* Fixed crashes when null requests are received while logging enabled
+* Fixed delay in certificate generation
+* Fixed potential duplication in certificate generation
+* Fixed description of counter 'err' and 'cls'
+
+2017-4-21 v35.HZ12.Kj
+
+* Added support for using ECDHE ciphers to exchange keys if browsers request so. 
+  Google Chrome starts to mark less secure ciphers such as RSA as obsolete. 
+  Less secure ciphers will be depreciated in TLS v1.3.
+* Added X509v3 Subject Alternative Name (SAN) extension to generated certificates.
+  Google Chrome starting with v58 mark certificates without SAN as invalid, enforcing
+  RFC 2818 specified in 2000!
+
+2017-1-26 v35.HZ12.Ki-p1
+
+* Fixed default behavior for missing -p and/or -k command line options.
+  With the change, -p or -k can be separately and optionally specified.
+
+2016-9-3 v35.HZ12.Ki
+
+* Added support for Intermediate CA certs. This enables pixelserv to take a root
+  CA cert or any intermediate CA cert on a trusted hierarchy to be the CA cert
+  for automatic certificate generation. Original issue reported by Popov. Thanks.
+* Removal of arbitrary limitation on CA certificates' subject.
+* Moved to pthread for all multiprocessing. fork() is still available as compile
+  option. Faster performance on serving client requests and generating certificates.
+* New calculations for average length per request (avg) and average processing time
+  per request (tav). This is huge in a sense that the old methods basically break
+  down after serving the initial hundreds or maybe thousands of requests.
+* New layout and explanatory notes on HTML stats page.
+* 32-bit x86 build supported in 64-bit Linux environment. Verified and Makefile
+  contributed by Popov.
+
+2016-3-13 v35.HZ12.Kh
+
+* Added access log toggle through HTTP URL. This allows turning on/off access log
+  without restarting pixelserv-tls.
+* Added result code of a processed request to access log - for diagnosis purpose.
+
+2015-12-24 v35.HZ12.Kg
+
+* Fixed serial number in generated certificates. This increases pixelserv compatibility
+  with Firefox. (Issue reported by nick8565. Thanks)
+
+2015-11-10 v35.HZ12.Kf
+
+* Set correct file permission for /tmp/pixelcerts - the pipe for sending certificate
+  generation request between "server" and "cert generator". Pixelserv can run as root
+  or non-root after this change. 
+* Changed HTML servstats further to be human readable.
+* Fixed an issue where garbled HTML code logged in access log when pixelserv quits.
+
+2015-10-30 v35.HZ12.Ke
+
+* Added pthread support.
+* Changed HTML servstats to be human readable. Text servstats remain unchanged and
+  parser friendly.
+* Fixed memory leak in "cert generator".
+
+2015-10-12 v35.HZ12.Kd
+
+* Added automatic generation of certificates for https.
+* Added four new stats:
+     slh (cert exists and used)
+     slm (cert missing for the ad domain)
+     sle (error in existing certs)
+     slu (none of the above)
+
+2015-10-3 v35.HZ12.Kc
+
+* First release of pixelserv-tls 
+* Added support for HTTPS connections
+* Added access log.
+* Cleaned up warnings on AMD64
