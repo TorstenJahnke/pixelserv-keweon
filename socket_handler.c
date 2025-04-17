@@ -8,6 +8,14 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <netdb.h>
+
 #include "socket_handler.h"
 #include "certs.h"
 #include "logger.h"
@@ -786,7 +794,8 @@ void* conn_handler( void *ptr )
       orig_hdr = strstr_first(bufptr, "Origin: ");
       if (orig_hdr) {
         cors_origin = realloc(cors_origin, CORS_ORIGIN_LEN_MAX);
-        strncpy(cors_origin, orig_hdr + 8, CORS_ORIGIN_LEN_MAX);
+        strncpy(cors_origin, orig_hdr + 8, CORS_ORIGIN_LEN_MAX - 1);
+          cors_origin[CORS_ORIGIN_LEN_MAX - 1] = '\0';
         strtok(cors_origin, "\r\n");
         if (strncmp(cors_origin, "null", 4) == 0) { /* some web developers are just ... */
             cors_origin[0] = '*';

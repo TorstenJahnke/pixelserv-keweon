@@ -22,6 +22,14 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <unistd.h>
+
 #include "certs.h"
 #include "logger.h"
 #include "socket_handler.h"
@@ -822,7 +830,7 @@ skip_ssl_accept:
               default:
                   log_msg(LGG_WARNING, "handshake failed: client %s:%s server %s. Lib(%d) Func(%d) Reason(%d)",
                       ip_buf, port_buf, t->servername,
-                          ERR_GET_LIB(ERR_peek_last_error()), ERR_GET_FUNC(ERR_peek_last_error()),
+                          ERR_GET_LIB(ERR_peek_last_error()), ERR_GET_REASON(ERR_peek_last_error()),
                               ERR_GET_REASON(ERR_peek_last_error()));
           }
           break;
