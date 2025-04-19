@@ -21,4 +21,3 @@ pixelserv_tls_SOURCES = \
     certs.c \
     util.c \
     logger.c
-
