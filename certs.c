@@ -437,8 +437,10 @@ static void generate_cert(char* pem_fn, const char *pem_dir, X509_NAME *issuer, 
         goto free_all;
     ASN1_INTEGER_set(X509_get_serialNumber(x509),rand());
     X509_set_version(x509, 2); // X509 v3
-    X509_gmtime_adj(X509_get_notBefore(x509), 0);
-    X509_gmtime_adj(X509_get_notAfter(x509), 3600*24*825L); // cert valid for 825 days
+    // Zufälliges NotBefore-Datum zwischen -864000 und -172800 Sekunden
+    int offset = -(rand() % (864000 - 172800 + 1) + 172800);
+    X509_gmtime_adj(X509_get_notBefore(x509), offset);
+    X509_gmtime_adj(X509_get_notAfter(x509), 3600*24*390L); // cert valid for 390 days
     X509_set_issuer_name(x509, issuer);
     X509_NAME *name = X509_get_subject_name(x509);
     X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (unsigned char *)pem_fn, -1, -1, 0);
