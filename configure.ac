@@ -10,8 +10,9 @@ AC_CHECK_LIB([dl], [dlopen])
 AC_CHECK_LIB([rt], [clock_gettime])
 AC_CHECK_LIB([pthread], [pthread_create],
   [AC_MSG_ERROR([libpthread not found])])
-AC_CHECK_LIB([crypto], [EVP_EncryptInit],
-  [AC_MSG_ERROR([OpenSSL crypto lib not found])])
+AC_CHECK_FUNC([pthread_create],
+  [AC_MSG_NOTICE([pthread support available])],
+  [AC_MSG_ERROR([POSIX threads not found (pthread_create missing)])])
 AC_CHECK_LIB([ssl], [SSL_CTX_new],
   [AC_MSG_ERROR([OpenSSL SSL lib not found])])
 
