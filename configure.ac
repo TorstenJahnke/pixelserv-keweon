@@ -29,7 +29,21 @@ esac
 
 AC_SUBST([EXTRA_LDFLAGS])
 
+AC_ARG_WITH([threads],
+  AS_HELP_STRING([--with-threads], [Enable POSIX thread support]),
+  [with_threads="$withval"],
+  [with_threads="yes"]
+)
+
+AS_IF([test "x$with_threads" = "xyes"], [
+  AC_CHECK_LIB([pthread], [pthread_create])
+  AC_CHECK_HEADERS([pthread.h])
+  AC_DEFINE([_REENTRANT], [1], [Enable reentrant (thread-safe) functions])
+  AC_DEFINE([_THREAD_SAFE], [1], [Ensure thread safety])
+])
+
 AC_CONFIG_FILES([
  Makefile
 ])
 AC_OUTPUT
+
