@@ -17,6 +17,23 @@ autoreconf -i
 make install
 ````
 
+## Build from source for FreeBSD
+
+This works on FreeBSD 14.2
+
+````
+autoheader
+autoconf
+autoreconf -i
+env CONFIG_SHELL=/usr/local/bin/bash ./configure \
+  --enable-static \
+  --with-threads \
+  CFLAGS="-O3 -Wall -pthread -D_REENTRANT -D_THREAD_SAFE" \
+  LDFLAGS="-pthread -static -Wl,-z,noexecstack"
+  
+gmake CFLAGS="-O3 -Wall -pthread -ffunction-sections -fdata-sections -fno-strict-aliasing -D_REENTRANT -D_THREAD_SAFE -g" LDFLAGS="-pthread -static -Wl,-z,noexecstack"
+````
+
 ## Install on Entware
 
 Binary packages are distributed by Entware. Beta version binaries during development are distributed from this GitHub repository.
