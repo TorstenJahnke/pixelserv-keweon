@@ -1,7 +1,0 @@
-#!/usr/bin/make -f
-
-%:
-	dh $@ --with autoreconf
-
-override_dh_auto_configure:
-	dh_auto_configure -- --host mipsel-linux-gnu LDFLAGS=-L../openssl-1.1.0l
