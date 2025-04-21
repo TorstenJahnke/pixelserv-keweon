@@ -23,7 +23,7 @@
 #include <openssl/ssl.h>
 
 // preprocessor defines
-#define VERSION "2.4"
+#define VERSION "3.0.15"
 
 #define BACKLOG SOMAXCONN       // how many pending connections queue will hold
 #define DEFAULT_IP "*"          // default IP address ALL - use this in messages only
