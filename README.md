@@ -13,8 +13,8 @@ This works on all Linux distributions and Linux-like environments such Homebrew 
 
 ````
 autoreconf -i
-./configure
-make install
+./configure CFLAGS="-O3 -Wall -pthread -D_REENTRANT -D_THREAD_SAFE" LDFLAGS="-pthread -static -Wl,-z,noexecstack"
+gmake LDFLAGS="-pthread -Wl,-z,noexecstack"
 ````
 
 ## Build from source on FreeBSD 14.2
@@ -25,6 +25,8 @@ This for FreeBSD 14.2
 autoreconf -i
 env CONFIG_SHELL=/usr/local/bin/bash ./configure --enable-static --with-threads CFLAGS="-O3 -Wall -pthread -D_REENTRANT -D_THREAD_SAFE" LDFLAGS="-pthread -static -Wl,-z,noexecstack"
 gmake CFLAGS="-O3 -Wall -pthread -ffunction-sections -fdata-sections -fno-strict-aliasing -D_REENTRANT -D_THREAD_SAFE -g" LDFLAGS="-pthread -static -Wl,-z,noexecstack"
+ - alternativ -
+gmake LDFLAGS="-pthread -Wl,-z,noexecstack"
 ````
 
 ## Install on Entware
