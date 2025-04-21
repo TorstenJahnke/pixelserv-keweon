@@ -91,7 +91,7 @@ and follow the on-screen instructions.
 
 ## Launch pixelserv-tls
 ````
-pixelserv-tls <listening ip>
+pixelserv-tls <listening ip> -f -k 443 -p 80 -R -T 50000 -O 60 -u root
 ````
 
 ## Dones
