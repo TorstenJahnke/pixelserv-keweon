@@ -98,3 +98,22 @@ Check out the [man page](https://github.com/kvic-z/pixelserv-tls/wiki/Command-Li
 
 Announcements are made through [kazoo.ga/pixelserv-tls](https://kazoo.ga/pixelserv-tls/). A discussion [thread](http://www.snbforums.com/threads/pixelserv-a-better-one-pixel-webserver-for-adblock.26114) is also available on SNBforums.
 
+## Dones
+1. Fixed compile errors
+2. Fixed memory leaks (quick and dirty)
+3. Added random Certificate generation Date
+4. Favicon is now a own header
+5. Handshake delay for the first Certifiace generation
+6. extended to .asp and .aspx extensions
+
+## ToDo
+1. Multithreading
+2. paralell processing
+3. Upgrade to OpenSSL 3.x (actually it's a mix between 2.x and 3.x)
+4. adding more MIME-Codes and types
+5. CertGeneration within RAM
+6. Logging all SNI requests
+7. Security check within the code (a nightmare)
+
+## DON'T DO THIS
+1. Working with clean SNI requests (very stupid idea)
