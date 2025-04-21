@@ -1,9 +1,26 @@
+#include <stdlib.h>
+#include <time.h>
+
 #include "util.h"
 #include "logger.h"
 #include "certs.h"
 #if defined(__GLIBC__) && defined(BACKTRACE)
 #include <execinfo.h>
 #endif
+
+char pixel_cert_pipe[PIXELSERV_MAX_PATH];
+
+void generate_random_pipe_path(char *buffer, size_t buflen) {
+    const char charset[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    int len = 32;
+
+    srand(time(NULL) ^ getpid());
+    snprintf(buffer, buflen, "/tmp/");
+    for (int i = 0; i < len; ++i) {
+        buffer[5 + i] = charset[rand() % (sizeof(charset) - 1)];
+    }
+    buffer[5 + len] = '\0';
+}
 
 // stats data
 // note that child processes inherit a snapshot copy
