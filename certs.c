@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include <time.h>      /* für nanosleep */
+#include <time.h>      /* fĆ¼r nanosleep */
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
@@ -39,7 +39,7 @@ static void **conn_stor;
 static int conn_stor_last = -1, conn_stor_max = -1;
 static pthread_mutex_t cslock;
 
-/* --- Job‑Queue für parallele Zertifikatserzeugung --------------------- */
+/* --- Jobā€‘Queue fĆ¼r parallele Zertifikatserzeugung --------------------- */
 typedef struct cert_job {
     char cert_name[PIXELSERV_MAX_SERVER_NAME+1];
     struct cert_job *next;
@@ -49,11 +49,13 @@ static cert_job_t *cert_q_head = NULL, *cert_q_tail = NULL;
 static pthread_mutex_t cert_q_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  cert_q_cond = PTHREAD_COND_INITIALIZER;
 
-/* Prototyp für generate_cert hinzufügen, damit kein implizites int angenommen wird */
+/* Prototyp fĆ¼r generate_cert hinzufĆ¼gen, damit kein implizites int angenommen wird */
 static void generate_cert(char *pem_fn,
                           const char *pem_dir,
                           X509_NAME *issuer,
-                          EVP_PKEY *privkey);
+                          EVP_PKEY *privkey,
+                          const STACK_OF(X509_INFO) *cachain);
+
 static void *cert_worker(void *arg) {
     cert_tlstor_t *ct = (cert_tlstor_t *)arg;
     for (;;) {
@@ -65,8 +67,9 @@ static void *cert_worker(void *arg) {
         if (!cert_q_head) cert_q_tail = NULL;
         pthread_mutex_unlock(&cert_q_lock);
 
-        /* tatsächliche Zertifikatserzeugung */
-        generate_cert(job->cert_name, ct->pem_dir, ct->issuer, ct->privkey);
+        /* tatsĆ¤chliche Zertifikatserzeugung */
+generate_cert(job->cert_name, ct->pem_dir, ct->issuer, ct->privkey, ct->cachain);
+
         free(job);
     }
     return NULL;
@@ -441,7 +444,12 @@ void ssl_free_locks()
     OPENSSL_free(locks);
 }
 
-static void generate_cert(char* pem_fn, const char *pem_dir, X509_NAME *issuer, EVP_PKEY *privkey)
+static void generate_cert(char* pem_fn,
+                          const char *pem_dir,
+                          X509_NAME *issuer,
+                          EVP_PKEY *privkey,
+                          const STACK_OF(X509_INFO) *cachain)
+
 {
     char fname[PIXELSERV_MAX_PATH];
     EVP_PKEY *key = NULL;
@@ -480,7 +488,7 @@ static void generate_cert(char* pem_fn, const char *pem_dir, X509_NAME *issuer, 
         goto free_all;
     ASN1_INTEGER_set(X509_get_serialNumber(x509),rand());
     X509_set_version(x509, 2); // X509 v3
-    // Zufälliges NotBefore-Datum zwischen -864000 und -172800 Sekunden
+    // ZufĆ¤lliges NotBefore-Datum zwischen -864000 und -172800 Sekunden
     int offset = -(rand() % (864000 - 172800 + 1) + 172800);
     X509_gmtime_adj(X509_get_notBefore(x509), offset);
     X509_gmtime_adj(X509_get_notAfter(x509), 3600*24*390L); // cert valid for 390 days
@@ -518,8 +526,21 @@ static void generate_cert(char* pem_fn, const char *pem_dir, X509_NAME *issuer, 
         log_msg(LGG_ERR, "%s: failed to open file for write: %s", __FUNCTION__, fname);
         goto free_all;
     }
-    PEM_write_X509(fp, x509);
-    PEM_write_PrivateKey(fp, key, NULL, NULL, 0, NULL, NULL);
+// Server-Zertifikat
+PEM_write_X509(fp, x509);
+
+// Root-Zertifikat(e)
+if (cachain) {
+    for (int i = 0; i < sk_X509_INFO_num(cachain); i++) {
+        X509_INFO *xi = sk_X509_INFO_value(cachain, i);
+        if (xi->x509) {
+            PEM_write_X509(fp, xi->x509);
+        }
+    }
+}
+
+// Private Key
+PEM_write_PrivateKey(fp, key, NULL, NULL, 0, NULL, NULL);
     fclose(fp);
     log_msg(LGG_NOTICE, "cert generated to disk: %s", pem_fn);
 
@@ -604,7 +625,7 @@ void cert_tlstor_init(const char *pem_dir, cert_tlstor_t *ct)
         log_msg(LGG_ERR, "%s: failed to load ca.key", __FUNCTION__);
     fclose(fp);
 
-    /* --- START Worker‑Pool für Zertifikat-Jobs ------------------------- */
+    /* --- START Workerā€‘Pool fĆ¼r Zertifikat-Jobs ------------------------- */
     for (int i = 0; i < 4; i++) {
         pthread_t tid;
         if (pthread_create(&tid, NULL, cert_worker, ct) == 0)
@@ -687,7 +708,7 @@ void *cert_generator(void *ptr) {
             struct stat st;
             snprintf(cert_file, PIXELSERV_MAX_PATH, "%s/%s", ((cert_tlstor_t*)ct)->pem_dir, p_buf);
             if(stat(cert_file, &st) != 0) /* doesn't exist */
-                generate_cert(p_buf, ct->pem_dir, ct->issuer, ct->privkey);
+		generate_cert(p_buf, ct->pem_dir, ct->issuer, ct->privkey, ct->cachain);
             p_buf = strtok_r(NULL, ":", &p_buf_sav);
         }
         /* quick check and flush if time due */
@@ -825,7 +846,7 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
     struct stat st;
     if (stat(full_pem_path, &st) != 0) {
         cbarg->status = SSL_MISS;
-        /* künstlicher Delay bei fehlendem Zertifikat */
+        /* kĆ¼nstlicher Delay bei fehlendem Zertifikat */
         {
             struct timespec delay = {0, 200 * 1000000}; /* 200ms */
             nanosleep(&delay, NULL);
@@ -1102,7 +1123,7 @@ void run_benchmark(const cert_tlstor_t *ct, const char *cert)
     for (c=1; c<=10; c++) {
         get_time(&tm);
         for (d=0; d<5; d++)
-            generate_cert(domain, ct->pem_dir, ct->issuer, ct->privkey);
+	generate_cert(domain, ct->pem_dir, ct->issuer, ct->privkey, ct->cachain);
         tm1 = elapsed_time_msec(tm) / 5.0;
         printf("%2d. generate cert to disk: %.3f ms\t", c, tm1);
         g_tm0 += tm1;
