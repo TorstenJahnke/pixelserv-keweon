@@ -1,30 +1,30 @@
 #define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
-#include <poll.h>
-#include <pthread.h>
-#include <signal.h>
 #include <netdb.h>
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
-#include <time.h>      /* fĆ¼r nanosleep */
-#include <sys/stat.h>
-#include <sys/wait.h>
-#include <sys/socket.h>
 #include <openssl/bn.h>
 #include <openssl/crypto.h>
 #include <openssl/err.h>
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
 #include <openssl/x509v3.h>
+#include <poll.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <time.h> /* fĆ¼r nanosleep */
+#include <unistd.h>
 
 #include "certs.h"
 #include "logger.h"
 #include "util.h"
 
 #if defined(__GLIBC__) && !defined(__UCLIBC__)
-#  include <malloc.h>
+#include <malloc.h>
 #endif
 
 static pthread_mutex_t *locks;
@@ -33,7 +33,7 @@ static SSL_CTX *g_sslctx;
 static sslctx_cache_struct *sslctx_tbl;
 static int sslctx_tbl_size, sslctx_tbl_end;
 static int sslctx_tbl_cnt_hit, sslctx_tbl_cnt_miss, sslctx_tbl_cnt_purge;
-static unsigned int  sslctx_tbl_last_flush;
+static unsigned int sslctx_tbl_last_flush;
 
 static void **conn_stor;
 static int conn_stor_last = -1, conn_stor_max = -1;
@@ -41,34 +41,29 @@ static pthread_mutex_t cslock;
 
 /* --- Jobā€‘Queue fĆ¼r parallele Zertifikatserzeugung --------------------- */
 typedef struct cert_job {
-    char cert_name[PIXELSERV_MAX_SERVER_NAME+1];
+    char cert_name[PIXELSERV_MAX_SERVER_NAME + 1];
     struct cert_job *next;
 } cert_job_t;
 
 static cert_job_t *cert_q_head = NULL, *cert_q_tail = NULL;
 static pthread_mutex_t cert_q_lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t  cert_q_cond = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t cert_q_cond = PTHREAD_COND_INITIALIZER;
 
 /* Prototyp fĆ¼r generate_cert hinzufĆ¼gen, damit kein implizites int angenommen wird */
-static void generate_cert(char *pem_fn,
-                          const char *pem_dir,
-                          X509_NAME *issuer,
-                          EVP_PKEY *privkey,
-                          const STACK_OF(X509_INFO) *cachain);
+static void generate_cert(char *pem_fn, const char *pem_dir, X509_NAME *issuer, EVP_PKEY *privkey, const STACK_OF(X509_INFO) * cachain);
 
 static void *cert_worker(void *arg) {
     cert_tlstor_t *ct = (cert_tlstor_t *)arg;
     for (;;) {
         pthread_mutex_lock(&cert_q_lock);
-        while (!cert_q_head)
-            pthread_cond_wait(&cert_q_cond, &cert_q_lock);
+        while (!cert_q_head) pthread_cond_wait(&cert_q_cond, &cert_q_lock);
         cert_job_t *job = cert_q_head;
         cert_q_head = job->next;
         if (!cert_q_head) cert_q_tail = NULL;
         pthread_mutex_unlock(&cert_q_lock);
 
         /* tatsĆ¤chliche Zertifikatserzeugung */
-generate_cert(job->cert_name, ct->pem_dir, ct->issuer, ct->privkey, ct->cachain);
+        generate_cert(job->cert_name, ct->pem_dir, ct->issuer, ct->privkey, ct->cachain);
 
         free(job);
     }
@@ -76,10 +71,9 @@ generate_cert(job->cert_name, ct->pem_dir, ct->issuer, ct->privkey, ct->cachain)
 }
 /* ----------------------------------------------------------------------- */
 
-
-#define SSLCTX_TBL_ptr(h)         ((sslctx_cache_struct *)(sslctx_tbl + h))
-#define SSLCTX_TBL_get(h, k)      SSLCTX_TBL_ptr(h)->k
-#define SSLCTX_TBL_set(h, k, v)   SSLCTX_TBL_ptr(h)->k = v
+#define SSLCTX_TBL_ptr(h) ((sslctx_cache_struct *)(sslctx_tbl + h))
+#define SSLCTX_TBL_get(h, k) SSLCTX_TBL_ptr(h)->k
+#define SSLCTX_TBL_set(h, k, v) SSLCTX_TBL_ptr(h)->k = v
 
 inline int sslctx_tbl_get_cnt_total() { return sslctx_tbl_end; }
 inline int sslctx_tbl_get_cnt_hit() { return sslctx_tbl_cnt_hit; }
@@ -91,10 +85,10 @@ inline int sslctx_tbl_get_sess_miss() { return SSL_CTX_sess_misses(g_sslctx); }
 inline int sslctx_tbl_get_sess_purge() { return SSL_CTX_sess_cache_full(g_sslctx); }
 
 static int sslctx_tbl_insert(const char *cert_name, SSL_CTX *sslctx, int ins_idx);
-static SSL_CTX* create_child_sslctx(const char* full_pem_path, const STACK_OF(X509_INFO) *cachain);
+static SSL_CTX *create_child_sslctx(const char *full_pem_path, const STACK_OF(X509_INFO) * cachain);
 
 #ifdef DEBUG
-static void sslctx_tbl_dump(int idx, const char * func);
+static void sslctx_tbl_dump(int idx, const char *func);
 #endif
 
 void conn_stor_init(int slots) {
@@ -103,19 +97,17 @@ void conn_stor_init(int slots) {
         return;
     }
     conn_stor = malloc(slots * sizeof(void *));
-    if (!conn_stor)
-        log_msg(LGG_ERR, "Failed to allocate conn_stor of size %d", slots);
+    if (!conn_stor) log_msg(LGG_ERR, "Failed to allocate conn_stor of size %d", slots);
     conn_stor_last = -1;
     conn_stor_max = slots;
     pthread_mutex_init(&cslock, NULL);
 }
 
 void conn_stor_flush() {
-    if (conn_stor_max < 0 || conn_stor_last < 0 || conn_stor_last <= conn_stor_max / 2)
-        return;
+    if (conn_stor_max < 0 || conn_stor_last < 0 || conn_stor_last <= conn_stor_max / 2) return;
     int threshold = conn_stor_max / 2;
     pthread_mutex_lock(&cslock);
-    for (;conn_stor_last >= threshold && conn_stor[conn_stor_last] != NULL; conn_stor_last--) {
+    for (; conn_stor_last >= threshold && conn_stor[conn_stor_last] != NULL; conn_stor_last--) {
         free(conn_stor[conn_stor_last]);
     }
     pthread_mutex_unlock(&cslock);
@@ -130,7 +122,7 @@ void conn_stor_relinq(conn_tlstor_struct *p) {
     pthread_mutex_unlock(&cslock);
 }
 
-conn_tlstor_struct* conn_stor_acquire() {
+conn_tlstor_struct *conn_stor_acquire() {
     conn_tlstor_struct *ret = NULL;
 
     pthread_mutex_lock(&cslock);
@@ -150,10 +142,8 @@ conn_tlstor_struct* conn_stor_acquire() {
     return ret;
 }
 
-void sslctx_tbl_init(int tbl_size)
-{
-    if (tbl_size <= 0)
-        return;
+void sslctx_tbl_init(int tbl_size) {
+    if (tbl_size <= 0) return;
     sslctx_tbl_end = 0;
     sslctx_tbl = malloc(tbl_size * sizeof(sslctx_cache_struct));
     if (!sslctx_tbl) {
@@ -166,8 +156,7 @@ void sslctx_tbl_init(int tbl_size)
     }
 }
 
-void sslctx_tbl_cleanup()
-{
+void sslctx_tbl_cleanup() {
     int idx;
     for (idx = 0; idx < sslctx_tbl_end; idx++) {
         free(SSLCTX_TBL_get(idx, cert_name));
@@ -181,19 +170,14 @@ void sslctx_tbl_cleanup()
     conn_stor = NULL;
 }
 
-static int cmp_sslctx_reuse_count(const void *p1, const void *p2)
-{
+static int cmp_sslctx_reuse_count(const void *p1, const void *p2) {
     /* reverse order */
     return ((sslctx_cache_struct *)p2)->reuse_count - ((sslctx_cache_struct *)p1)->reuse_count;
 }
 
-static int cmp_sslctx_certname(const void *k, const void *p)
-{
-    return strcmp(((sslctx_cache_struct *)k)->cert_name, ((sslctx_cache_struct *)p)->cert_name);
-}
+static int cmp_sslctx_certname(const void *k, const void *p) { return strcmp(((sslctx_cache_struct *)k)->cert_name, ((sslctx_cache_struct *)p)->cert_name); }
 
-void sslctx_tbl_load(const char* pem_dir, const STACK_OF(X509_INFO) *cachain)
-{
+void sslctx_tbl_load(const char *pem_dir, const STACK_OF(X509_INFO) * cachain) {
     FILE *fp;
     char *fname = NULL, *line;
     if ((line = malloc(PIXELSERV_MAX_PATH)) == NULL || (fname = malloc(PIXELSERV_MAX_PATH)) == NULL) {
@@ -202,12 +186,12 @@ void sslctx_tbl_load(const char* pem_dir, const STACK_OF(X509_INFO) *cachain)
     }
 
     (void)snprintf(fname, PIXELSERV_MAX_PATH, "%s/prefetch", pem_dir);
-    if((fp = fopen(fname, "r")) == NULL) {
+    if ((fp = fopen(fname, "r")) == NULL) {
         log_msg(LGG_WARNING, "%s: %s doesn't exist.", __FUNCTION__, fname);
         goto quit_load;
     }
 
-    while (getline(&line, &(size_t){ PIXELSERV_MAX_PATH }, fp) != -1) {
+    while (getline(&line, &(size_t){PIXELSERV_MAX_PATH}, fp) != -1) {
         char *cert_name = strtok(line, " \n\t");
         (void)snprintf(fname, PIXELSERV_MAX_PATH, "%s/%s", pem_dir, cert_name);
 
@@ -217,8 +201,7 @@ void sslctx_tbl_load(const char* pem_dir, const STACK_OF(X509_INFO) *cachain)
             sslctx_tbl_insert(cert_name, sslctx, ins_idx);
             log_msg(LGG_NOTICE, "%s: %s", __FUNCTION__, cert_name);
         }
-        if (sslctx_tbl_end >= sslctx_tbl_size)
-            break;
+        if (sslctx_tbl_end >= sslctx_tbl_size) break;
     }
     fclose(fp);
     sslctx_tbl_cnt_miss = 0; /* reset */
@@ -228,9 +211,8 @@ quit_load:
     free(line);
 }
 
-void sslctx_tbl_save(const char* pem_dir)
-{
-    #define RATIO_TO_SAVE 1
+void sslctx_tbl_save(const char *pem_dir) {
+#define RATIO_TO_SAVE 1
     int idx;
     char *fname;
     FILE *fp;
@@ -246,18 +228,15 @@ void sslctx_tbl_save(const char* pem_dir)
         goto quit_save;
     }
     qsort(SSLCTX_TBL_ptr(0), sslctx_tbl_end, sizeof(sslctx_cache_struct), cmp_sslctx_reuse_count);
-    if (sslctx_tbl_end > (sslctx_tbl_size * RATIO_TO_SAVE))
-        sslctx_tbl_end = sslctx_tbl_size * RATIO_TO_SAVE;
+    if (sslctx_tbl_end > (sslctx_tbl_size * RATIO_TO_SAVE)) sslctx_tbl_end = sslctx_tbl_size * RATIO_TO_SAVE;
 
-    for (idx=0; idx < sslctx_tbl_end; idx++)
-        fprintf(fp, "%s\t%d\n", SSLCTX_TBL_get(idx, cert_name), SSLCTX_TBL_get(idx, reuse_count));
+    for (idx = 0; idx < sslctx_tbl_end; idx++) fprintf(fp, "%s\t%d\n", SSLCTX_TBL_get(idx, cert_name), SSLCTX_TBL_get(idx, reuse_count));
     fclose(fp);
 quit_save:
     free(fname);
 }
 
-void sslctx_tbl_lock(int idx)
-{
+void sslctx_tbl_lock(int idx) {
     if (idx < 0 || idx >= sslctx_tbl_size) {
         log_msg(LOG_DEBUG, "%s: invalid idx %d", __FUNCTION__, idx);
         return;
@@ -265,8 +244,7 @@ void sslctx_tbl_lock(int idx)
     pthread_mutex_lock(&SSLCTX_TBL_get(idx, lock));
 }
 
-void sslctx_tbl_unlock(int idx)
-{
+void sslctx_tbl_unlock(int idx) {
     if (idx < 0 || idx >= sslctx_tbl_size) {
         log_msg(LOG_DEBUG, "%s: invalid idx %d", __FUNCTION__, idx);
         return;
@@ -274,8 +252,7 @@ void sslctx_tbl_unlock(int idx)
     pthread_mutex_unlock(&SSLCTX_TBL_get(idx, lock));
 }
 
-static int sslctx_tbl_check_and_flush(void)
-{
+static int sslctx_tbl_check_and_flush(void) {
     int pixel_now = process_uptime(), rv = -1;
 #ifdef DEBUG
     printf("%s: now %d last_flush %d", __FUNCTION__, pixel_now, sslctx_tbl_last_flush);
@@ -293,12 +270,11 @@ static int sslctx_tbl_check_and_flush(void)
     return rv;
 }
 
-static int sslctx_tbl_lookup(char* cert_name, int* found_idx, int* ins_idx)
-{
-    *found_idx = -1; *ins_idx = -1;
+static int sslctx_tbl_lookup(char *cert_name, int *found_idx, int *ins_idx) {
+    *found_idx = -1;
+    *ins_idx = -1;
     if (!cert_name || !found_idx || !ins_idx) {
-        log_msg(LOG_ERR, "Invalid params. cert_name: %s. found_idx: %d, ins_idx: %d",
-            cert_name, found_idx, ins_idx);
+        log_msg(LOG_ERR, "Invalid params. cert_name: %s. found_idx: %d, ins_idx: %d", cert_name, found_idx, ins_idx);
         return -1;
     }
 
@@ -314,7 +290,7 @@ static int sslctx_tbl_lookup(char* cert_name, int* found_idx, int* ins_idx)
     } else if (sslctx_tbl_end < sslctx_tbl_size) {
         *ins_idx = sslctx_tbl_end;
     } else {
-        int idx, purge_idx = 0; // decimate the first entry if no suitable candiate
+        int idx, purge_idx = 0;  // decimate the first entry if no suitable candiate
         unsigned int _last_use = process_uptime();
 
         for (idx = 0; idx < sslctx_tbl_end; idx++) {
@@ -328,11 +304,9 @@ static int sslctx_tbl_lookup(char* cert_name, int* found_idx, int* ins_idx)
     return 0;
 }
 
-static int sslctx_tbl_insert(const char *cert_name, SSL_CTX *sslctx, int ins_idx)
-{
+static int sslctx_tbl_insert(const char *cert_name, SSL_CTX *sslctx, int ins_idx) {
     if (cert_name == NULL || sslctx == NULL || ins_idx >= sslctx_tbl_size || ins_idx < 0) {
-        log_msg(LOG_ERR, "Invalid params. cert_name: %s. sslctx: %d, ins_idx: %d",
-            cert_name, sslctx, ins_idx);
+        log_msg(LOG_ERR, "Invalid params. cert_name: %s. sslctx: %d, ins_idx: %d", cert_name, sslctx, ins_idx);
         return -1;
     }
     sslctx_tbl_cnt_miss++;
@@ -362,8 +336,8 @@ static int sslctx_tbl_insert(const char *cert_name, SSL_CTX *sslctx, int ins_idx
     return 0;
 }
 
-static int sslctx_tbl_cache(const char *cert_name, SSL_CTX *sslctx, int ins_idx)
-{   int ret = -1;
+static int sslctx_tbl_cache(const char *cert_name, SSL_CTX *sslctx, int ins_idx) {
+    int ret = -1;
     if (sslctx_tbl_insert(cert_name, sslctx, ins_idx) == 0) {
         qsort(SSLCTX_TBL_ptr(0), sslctx_tbl_end, sizeof(sslctx_cache_struct), cmp_sslctx_certname);
         ret = 0;
@@ -372,17 +346,13 @@ static int sslctx_tbl_cache(const char *cert_name, SSL_CTX *sslctx, int ins_idx)
 }
 
 static int sslctx_tbl_purge(int idx) {
-     {
-        return -1;
-    }
+    { return -1; }
 
-        if (SSLCTX_TBL_get(idx, cert_name))
-        free(SSLCTX_TBL_get(idx, cert_name));
-        if (SSLCTX_TBL_get(idx, sslctx))
-        SSL_CTX_free(SSLCTX_TBL_get(idx, sslctx));
+    if (SSLCTX_TBL_get(idx, cert_name)) free(SSLCTX_TBL_get(idx, cert_name));
+    if (SSLCTX_TBL_get(idx, sslctx)) SSL_CTX_free(SSLCTX_TBL_get(idx, sslctx));
     --sslctx_tbl_end;
     if (idx < sslctx_tbl_end) {
-        memmove(SSLCTX_TBL_ptr(idx), SSLCTX_TBL_ptr(idx+1), sizeof(sslctx_cache_struct) * (sslctx_tbl_end - idx));
+        memmove(SSLCTX_TBL_ptr(idx), SSLCTX_TBL_ptr(idx + 1), sizeof(sslctx_cache_struct) * (sslctx_tbl_end - idx));
         memset(SSLCTX_TBL_ptr(sslctx_tbl_end), 0, sizeof(sslctx_cache_struct));
     } else {
         memset(SSLCTX_TBL_ptr(sslctx_tbl_end), 0, sizeof(sslctx_cache_struct));
@@ -392,8 +362,7 @@ static int sslctx_tbl_purge(int idx) {
 }
 
 #ifdef DEBUG
-static void sslctx_tbl_dump(int idx, const char * func)
-{
+static void sslctx_tbl_dump(int idx, const char *func) {
     printf("%s: idx %d now %d\n", func, idx, process_uptime());
     printf("** cert_name %s\n", sslctx_tbl[idx].cert_name);
     printf("** alloc_len %d\n", sslctx_tbl[idx].alloc_len);
@@ -404,8 +373,7 @@ static void sslctx_tbl_dump(int idx, const char * func)
 #endif
 
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
-static void ssl_lock_cb(int mode, int type, const char *file, int line)
-{
+static void ssl_lock_cb(int mode, int type, const char *file, int line) {
     if (mode & CRYPTO_LOCK)
         pthread_mutex_lock(&(locks[type]));
     else
@@ -413,42 +381,31 @@ static void ssl_lock_cb(int mode, int type, const char *file, int line)
 }
 #endif
 
-void ssl_thread_id(CRYPTO_THREADID *id)
-{
-    CRYPTO_THREADID_set_numeric(id, (unsigned long) pthread_self());
-}
+void ssl_thread_id(CRYPTO_THREADID *id) { CRYPTO_THREADID_set_numeric(id, (unsigned long)pthread_self()); }
 
-void ssl_init_locks()
-{
+void ssl_init_locks() {
 #ifdef DEBUG
     printf("%s: CRYPTO_num_locks = %d\n", __FUNCTION__, CRYPTO_num_locks());
 #endif
     int i;
-    locks = (pthread_mutex_t *)OPENSSL_malloc(CRYPTO_num_locks()*sizeof(pthread_mutex_t));
-    for (i = 0; i < CRYPTO_num_locks(); i++)
-        pthread_mutex_init(&(locks[i]), NULL);
+    locks = (pthread_mutex_t *)OPENSSL_malloc(CRYPTO_num_locks() * sizeof(pthread_mutex_t));
+    for (i = 0; i < CRYPTO_num_locks(); i++) pthread_mutex_init(&(locks[i]), NULL);
 
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
-    CRYPTO_THREADID_set_callback((void (*)(CRYPTO_THREADID *)) ssl_thread_id);
-    CRYPTO_set_locking_callback((void (*)(int, int, const char *, int)) ssl_lock_cb);
+    CRYPTO_THREADID_set_callback((void (*)(CRYPTO_THREADID *))ssl_thread_id);
+    CRYPTO_set_locking_callback((void (*)(int, int, const char *, int))ssl_lock_cb);
 #endif
 }
 
-void ssl_free_locks()
-{
+void ssl_free_locks() {
     int i;
     CRYPTO_set_locking_callback(NULL);
-    for (i = 0; i < CRYPTO_num_locks(); i++)
-        pthread_mutex_destroy(&(locks[i]));
+    for (i = 0; i < CRYPTO_num_locks(); i++) pthread_mutex_destroy(&(locks[i]));
 
     OPENSSL_free(locks);
 }
 
-static void generate_cert(char* pem_fn,
-                          const char *pem_dir,
-                          X509_NAME *issuer,
-                          EVP_PKEY *privkey,
-                          const STACK_OF(X509_INFO) *cachain)
+static void generate_cert(char *pem_fn, const char *pem_dir, X509_NAME *issuer, EVP_PKEY *privkey, const STACK_OF(X509_INFO) * cachain)
 
 {
     char fname[PIXELSERV_MAX_PATH];
@@ -462,54 +419,48 @@ static void generate_cert(char* pem_fn,
     EVP_MD_CTX *p_ctx = NULL;
 
     p_ctx = EVP_MD_CTX_create();
-    if(EVP_DigestSignInit(p_ctx, NULL, EVP_sha256(), NULL, privkey) != 1)
-        log_msg(LGG_ERR, "%s: failed to init sign context", __FUNCTION__);
+    if (EVP_DigestSignInit(p_ctx, NULL, EVP_sha256(), NULL, privkey) != 1) log_msg(LGG_ERR, "%s: failed to init sign context", __FUNCTION__);
 
-    if(pem_fn[0] == '_') pem_fn[0] = '*';
+    if (pem_fn[0] == '_') pem_fn[0] = '*';
 
     // -- generate cert
     BIGNUM *e = BN_new();
     BN_set_word(e, RSA_F4);
 #if OPENSSL_VERSION_MAJOR >= 3
     key = EVP_RSA_gen(2048);
-    if (!key)
-        goto free_all;
+    if (!key) goto free_all;
 #else
     RSA *rsa = RSA_new();
-    if (RSA_generate_key_ex(rsa, 2048, e, NULL) < 0)
-        goto free_all;
+    if (RSA_generate_key_ex(rsa, 2048, e, NULL) < 0) goto free_all;
     key = EVP_PKEY_new();
-    EVP_PKEY_assign_RSA(key, rsa); // rsa will be freed when key is freed
+    EVP_PKEY_assign_RSA(key, rsa);  // rsa will be freed when key is freed
 #endif
 #ifdef DEBUG
     printf("%s: rsa key generated for [%s]\n", __FUNCTION__, pem_fn);
 #endif
-    if((x509 = X509_new()) == NULL)
-        goto free_all;
-    ASN1_INTEGER_set(X509_get_serialNumber(x509),rand());
-    X509_set_version(x509, 2); // X509 v3
+    if ((x509 = X509_new()) == NULL) goto free_all;
+    ASN1_INTEGER_set(X509_get_serialNumber(x509), rand());
+    X509_set_version(x509, 2);  // X509 v3
     // ZufĆ¤lliges NotBefore-Datum zwischen -864000 und -172800 Sekunden
     int offset = -(rand() % (864000 - 172800 + 1) + 172800);
     X509_gmtime_adj(X509_get_notBefore(x509), offset);
-    X509_gmtime_adj(X509_get_notAfter(x509), 3600*24*390L); // cert valid for 390 days
+    X509_gmtime_adj(X509_get_notAfter(x509), 3600 * 24 * 390L);  // cert valid for 390 days
     X509_set_issuer_name(x509, issuer);
     X509_NAME *name = X509_get_subject_name(x509);
     X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (unsigned char *)pem_fn, -1, -1, 0);
 
     tld_tmp = strchr(pem_fn, '.');
-    while(tld_tmp != NULL) {
+    while (tld_tmp != NULL) {
         dot_count++;
         tld = tld_tmp + 1;
         tld_tmp = strchr(tld, '.');
     }
     tld_tmp = (dot_count == 3 && (atoi(tld) > 0 || (atoi(tld) == 0 && strlen(tld) == 1))) ? "IP" : "DNS";
     snprintf(san_str, SAN_STR_SIZE, "%s:%s", tld_tmp, pem_fn);
-    if ((ext = X509V3_EXT_conf_nid(NULL, NULL, NID_subject_alt_name, san_str)) == NULL)
-        goto free_all;
+    if ((ext = X509V3_EXT_conf_nid(NULL, NULL, NID_subject_alt_name, san_str)) == NULL) goto free_all;
     X509_add_ext(x509, ext, -1);
     X509_EXTENSION_free(ext);
-    if ((ext = X509V3_EXT_conf_nid(NULL, NULL, NID_ext_key_usage, "TLS Web Server Authentication")) == NULL)
-        goto free_all;
+    if ((ext = X509V3_EXT_conf_nid(NULL, NULL, NID_ext_key_usage, "TLS Web Server Authentication")) == NULL) goto free_all;
     X509_add_ext(x509, ext, -1);
     X509_set_pubkey(x509, key);
     X509_sign_ctx(x509, p_ctx);
@@ -518,29 +469,28 @@ static void generate_cert(char* pem_fn,
 #endif
 
     // -- save cert
-    if(pem_fn[0] == '*')
-        pem_fn[0] = '_';
+    if (pem_fn[0] == '*') pem_fn[0] = '_';
     snprintf(fname, PIXELSERV_MAX_PATH, "%s/%s", pem_dir, pem_fn);
     FILE *fp = fopen(fname, "wb");
-    if(fp == NULL) {
+    if (fp == NULL) {
         log_msg(LGG_ERR, "%s: failed to open file for write: %s", __FUNCTION__, fname);
         goto free_all;
     }
-// Server-Zertifikat
-PEM_write_X509(fp, x509);
+    // Server-Zertifikat
+    PEM_write_X509(fp, x509);
 
-// Root-Zertifikat(e)
-if (cachain) {
-    for (int i = 0; i < sk_X509_INFO_num(cachain); i++) {
-        X509_INFO *xi = sk_X509_INFO_value(cachain, i);
-        if (xi->x509) {
-            PEM_write_X509(fp, xi->x509);
+    // Root-Zertifikat(e)
+    if (cachain) {
+        for (int i = 0; i < sk_X509_INFO_num(cachain); i++) {
+            X509_INFO *xi = sk_X509_INFO_value(cachain, i);
+            if (xi->x509) {
+                PEM_write_X509(fp, xi->x509);
+            }
         }
     }
-}
 
-// Private Key
-PEM_write_PrivateKey(fp, key, NULL, NULL, 0, NULL, NULL);
+    // Private Key
+    PEM_write_PrivateKey(fp, key, NULL, NULL, 0, NULL, NULL);
     fclose(fp);
     log_msg(LGG_NOTICE, "cert generated to disk: %s", pem_fn);
 
@@ -552,12 +502,10 @@ free_all:
     X509_free(x509);
 }
 
-
 static int pem_passwd_cb(char *buf, int size, int rwflag, void *u) {
     int rv = 0, fp;
     char *fname = NULL;
-    if (asprintf(&fname, "%s/ca.key.passphrase", (char*)u) < 0)
-        goto quit_cb;
+    if (asprintf(&fname, "%s/ca.key.passphrase", (char *)u) < 0) goto quit_cb;
 
     if ((fp = open(fname, O_RDONLY)) < 0)
         log_msg(LGG_ERR, "%s: failed to open ca.key.passphrase", __FUNCTION__);
@@ -572,11 +520,10 @@ static int pem_passwd_cb(char *buf, int size, int rwflag, void *u) {
 
 quit_cb:
     free(fname);
-    return --rv; // trim \n at the end
+    return --rv;  // trim \n at the end
 }
 
-void cert_tlstor_init(const char *pem_dir, cert_tlstor_t *ct)
-{
+void cert_tlstor_init(const char *pem_dir, cert_tlstor_t *ct) {
     FILE *fp;
     char cert_file[PIXELSERV_MAX_PATH];
     X509 *x509 = X509_new();
@@ -585,16 +532,15 @@ void cert_tlstor_init(const char *pem_dir, cert_tlstor_t *ct)
     snprintf(cert_file, PIXELSERV_MAX_PATH, "%s/ca.crt", pem_dir);
     fp = fopen(cert_file, "r");
 
-    if(!fp || !PEM_read_X509(fp, &x509, NULL, NULL))
-       log_msg(LGG_ERR, "%s: failed to load ca.crt", __FUNCTION__);
+    if (!fp || !PEM_read_X509(fp, &x509, NULL, NULL))
+        log_msg(LGG_ERR, "%s: failed to load ca.crt", __FUNCTION__);
     else {
         char *cafile;
         int fsz;
         BIO *bioin;
         EVP_PKEY *pubkey = X509_get_pubkey(x509);
 
-        if (fseek(fp, 0L, SEEK_END) < 0)
-            log_msg(LGG_ERR, "%s: failed to seek ca.crt", __FUNCTION__);
+        if (fseek(fp, 0L, SEEK_END) < 0) log_msg(LGG_ERR, "%s: failed to seek ca.crt", __FUNCTION__);
 
         fsz = ftell(fp);
         cafile = malloc(fsz);
@@ -602,15 +548,13 @@ void cert_tlstor_init(const char *pem_dir, cert_tlstor_t *ct)
         fsz = fread(cafile, 1, fsz, fp);
 
         bioin = BIO_new_mem_buf(cafile, fsz);
-        if (!bioin)
-            log_msg(LGG_ERR, "%s: failed to create BIO mem buffer", __FUNCTION__);
+        if (!bioin) log_msg(LGG_ERR, "%s: failed to create BIO mem buffer", __FUNCTION__);
 
         ct->pem_dir = pem_dir;
         ct->cachain = PEM_X509_INFO_read_bio(bioin, NULL, NULL, NULL);
         ct->issuer = X509_NAME_dup(X509_get_subject_name(x509));
 
-        if (ct->cachain == NULL)
-            log_msg(LGG_ERR, "%s: failed to read CA chains", __FUNCTION__);
+        if (ct->cachain == NULL) log_msg(LGG_ERR, "%s: failed to read CA chains", __FUNCTION__);
 
         BIO_free(bioin);
         EVP_PKEY_free(pubkey);
@@ -621,8 +565,7 @@ void cert_tlstor_init(const char *pem_dir, cert_tlstor_t *ct)
 
     snprintf(cert_file, PIXELSERV_MAX_PATH, "%s/ca.key", pem_dir);
     fp = fopen(cert_file, "r");
-    if(!fp || !PEM_read_PrivateKey(fp, &ct->privkey, pem_passwd_cb, (void*)pem_dir))
-        log_msg(LGG_ERR, "%s: failed to load ca.key", __FUNCTION__);
+    if (!fp || !PEM_read_PrivateKey(fp, &ct->privkey, pem_passwd_cb, (void *)pem_dir)) log_msg(LGG_ERR, "%s: failed to load ca.key", __FUNCTION__);
     fclose(fp);
 
     /* --- START Workerā€‘Pool fĆ¼r Zertifikat-Jobs ------------------------- */
@@ -636,8 +579,7 @@ void cert_tlstor_init(const char *pem_dir, cert_tlstor_t *ct)
     /* --------------------------------------------------------------------- */
 }
 
-void cert_tlstor_cleanup(cert_tlstor_t *c)
-{
+void cert_tlstor_cleanup(cert_tlstor_t *c) {
     sk_X509_INFO_pop_free(c->cachain, X509_INFO_free);
     X509_NAME_free(c->issuer);
     EVP_PKEY_free(c->privkey);
@@ -648,7 +590,7 @@ void *cert_generator(void *ptr) {
     printf("%s: thread up and running\n", __FUNCTION__);
 #endif
     int idle = 0;
-    cert_tlstor_t *ct = (cert_tlstor_t *) ptr;
+    cert_tlstor_t *ct = (cert_tlstor_t *)ptr;
 
     char buf[PIXELSERV_MAX_SERVER_NAME * 4 + 1];
     char *half_token = buf + PIXELSERV_MAX_SERVER_NAME * 4;
@@ -660,10 +602,9 @@ void *cert_generator(void *ptr) {
 
     for (;;) {
         int ret;
-        if(fd == -1)
-            log_msg(LGG_ERR, "%s: failed to open %s: %s", PIXEL_CERT_PIPE, strerror(errno));
+        if (fd == -1) log_msg(LGG_ERR, "%s: failed to open %s: %s", PIXEL_CERT_PIPE, strerror(errno));
         strcpy(buf, half_token);
-        struct pollfd pfd = { fd, POLLIN, POLLIN };
+        struct pollfd pfd = {fd, POLLIN, POLLIN};
         ret = poll(&pfd, 1, 1000 * PIXEL_SSL_SESS_TIMEOUT / 4);
         if (ret <= 0) {
             /* timeout */
@@ -681,9 +622,9 @@ void *cert_generator(void *ptr) {
             continue;
         }
         ssize_t cnt;
-        if((cnt = read(fd, buf + strlen(half_token), PIXELSERV_MAX_SERVER_NAME * 4 - strlen(half_token))) == 0) {
+        if ((cnt = read(fd, buf + strlen(half_token), PIXELSERV_MAX_SERVER_NAME * 4 - strlen(half_token))) == 0) {
 #ifdef DEBUG
-             printf("%s: pipe EOF\n", __FUNCTION__);
+            printf("%s: pipe EOF\n", __FUNCTION__);
 #endif
             close(fd);
             fd = open(PIXEL_CERT_PIPE, O_RDONLY | O_NONBLOCK); /* non block required */
@@ -695,20 +636,19 @@ void *cert_generator(void *ptr) {
             half_token = buf + PIXELSERV_MAX_SERVER_NAME * 4;
         } else {
             size_t i = 0;
-            for (i=1; buf[PIXELSERV_MAX_SERVER_NAME * 4 - i]!=':' && i < strlen(buf); i++);
+            for (i = 1; buf[PIXELSERV_MAX_SERVER_NAME * 4 - i] != ':' && i < strlen(buf); i++);
             half_token = buf + PIXELSERV_MAX_SERVER_NAME * 4 - i + 1;
             buf[PIXELSERV_MAX_SERVER_NAME * 4 - i + 1] = '\0';
         }
-        if (ct->privkey == NULL || ct->issuer == NULL)
-            continue;
+        if (ct->privkey == NULL || ct->issuer == NULL) continue;
         char *p_buf, *p_buf_sav = NULL;
         p_buf = strtok_r(buf, ":", &p_buf_sav);
         while (p_buf != NULL) {
             char cert_file[PIXELSERV_MAX_PATH];
             struct stat st;
-            snprintf(cert_file, PIXELSERV_MAX_PATH, "%s/%s", ((cert_tlstor_t*)ct)->pem_dir, p_buf);
-            if(stat(cert_file, &st) != 0) /* doesn't exist */
-		generate_cert(p_buf, ct->pem_dir, ct->issuer, ct->privkey, ct->cachain);
+            snprintf(cert_file, PIXELSERV_MAX_PATH, "%s/%s", ((cert_tlstor_t *)ct)->pem_dir, p_buf);
+            if (stat(cert_file, &st) != 0) /* doesn't exist */
+                generate_cert(p_buf, ct->pem_dir, ct->issuer, ct->privkey, ct->cachain);
             p_buf = strtok_r(NULL, ":", &p_buf_sav);
         }
         /* quick check and flush if time due */
@@ -718,8 +658,7 @@ void *cert_generator(void *ptr) {
 }
 
 #ifdef TLS1_3_VERSION
-static char* get_server_name(SSL *s)
-{
+static char *get_server_name(SSL *s) {
     const unsigned char *p;
     size_t len, remaining;
 
@@ -727,40 +666,33 @@ static char* get_server_name(SSL *s)
      * The server_name extension was given too much extensibility when it
      * was written, so parsing the normal case is a bit complex.
      */
-    if (!SSL_client_hello_get0_ext(s, TLSEXT_TYPE_server_name, &p,
-                                   &remaining) ||
-        remaining <= 2)
-        return NULL;
+    if (!SSL_client_hello_get0_ext(s, TLSEXT_TYPE_server_name, &p, &remaining) || remaining <= 2) return NULL;
     /* Extract the length of the supplied list of names. */
     len = (*(p++) << 8);
     len += *(p++);
-    if (len + 2 != remaining)
-        return NULL;
+    if (len + 2 != remaining) return NULL;
     remaining = len;
     /*
      * The list in practice only has a single element, so we only consider
      * the first one.
      */
-    if (remaining == 0 || *p++ != TLSEXT_NAMETYPE_host_name)
-        return NULL;
+    if (remaining == 0 || *p++ != TLSEXT_NAMETYPE_host_name) return NULL;
     remaining--;
     /* Now we can finally pull out the byte array with the actual hostname. */
-    if (remaining <= 2)
-        return NULL;
+    if (remaining <= 2) return NULL;
     len = (*(p++) << 8);
     len += *(p++);
-    if (len + 2 > remaining)
-        return NULL;
+    if (len + 2 > remaining) return NULL;
     return (char *)p;
 }
 
 int tls_clienthello_cb(SSL *ssl, int *ad, void *arg) {
-# define    CB_OK   1
-# define    CB_ERR  0
+#define CB_OK 1
+#define CB_ERR 0
 #else
 static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
-# define    CB_OK   0
-# define    CB_ERR  SSL_TLSEXT_ERR_ALERT_FATAL
+#define CB_OK 0
+#define CB_ERR SSL_TLSEXT_ERR_ALERT_FATAL
 #endif
     int rv = CB_OK;
     tlsext_cb_arg_struct *cbarg = (tlsext_cb_arg_struct *)arg;
@@ -775,9 +707,9 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
 
     char *srv_name = NULL;
 #ifdef TLS1_3_VERSION
-    srv_name = (char*)get_server_name(ssl);
+    srv_name = (char *)get_server_name(ssl);
 #else
-    srv_name = (char*)(char*)SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
+    srv_name = (char *)(char *)SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
 #endif
     if (srv_name)
         strncpy(cbarg->servername, srv_name, sizeof(cbarg->servername) - 1);
@@ -795,7 +727,7 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
     int dot_count = 0;
     char *tld = NULL;
     char *pem_file = strchr(srv_name, '.');
-    while(pem_file){
+    while (pem_file) {
         dot_count++;
         tld = pem_file + 1;
         pem_file = strchr(tld, '.');
@@ -812,7 +744,7 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
         len += strlen(strchr(srv_name, '.'));
     }
 #ifdef DEBUG
-    printf("PEM filename: %s\n",full_pem_path);
+    printf("PEM filename: %s\n", full_pem_path);
 #endif
     if (len > PIXELSERV_MAX_PATH) {
         log_msg(LGG_ERR, "%s: buffer overflow. %s", __FUNCTION__, full_pem_path);
@@ -824,9 +756,8 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
     sslctx_tbl_lookup(pem_file, &handle, &ins_handle);
 #ifdef DEBUG
     printf("%s: handle %d ins_handle %d\n", __FUNCTION__, handle, ins_handle);
-    if (handle >=0)
-        sslctx_tbl_dump(handle, __FUNCTION__);
-    if (ins_handle >=0) sslctx_tbl_dump(ins_handle, __FUNCTION__);
+    if (handle >= 0) sslctx_tbl_dump(handle, __FUNCTION__);
+    if (ins_handle >= 0) sslctx_tbl_dump(ins_handle, __FUNCTION__);
 #endif
 
     if (handle >= 0) {
@@ -854,7 +785,7 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
 
         log_msg(LGG_WARNING, "%s %s missing", srv_name, pem_file);
 
-submit_missing_cert:
+    submit_missing_cert:
         /* Job enqueuen statt Pipe-Write */
         {
             cert_job_t *job = malloc(sizeof(*job));
@@ -863,8 +794,10 @@ submit_missing_cert:
                 job->cert_name[PIXELSERV_MAX_SERVER_NAME] = '\0';
                 job->next = NULL;
                 pthread_mutex_lock(&cert_q_lock);
-                if (!cert_q_tail) cert_q_head = job;
-                else cert_q_tail->next = job;
+                if (!cert_q_tail)
+                    cert_q_head = job;
+                else
+                    cert_q_tail->next = job;
                 cert_q_tail = job;
                 pthread_cond_signal(&cert_q_cond);
                 pthread_mutex_unlock(&cert_q_lock);
@@ -916,54 +849,42 @@ static SSL_SESSION *get_session(SSL *ssl, unsigned char *id, int idlen, int *do_
 }
 */
 
-static SSL_CTX* create_child_sslctx(const char* full_pem_path, const STACK_OF(X509_INFO) *cachain)
-{
+static SSL_CTX *create_child_sslctx(const char *full_pem_path, const STACK_OF(X509_INFO) * cachain) {
     SSL_CTX *sslctx = SSL_CTX_new(SSLv23_server_method());
 #if OPENSSL_VERSION_NUMBER < 0x10101000L
     EC_KEY *ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
-    if (!ecdh)
-        log_msg(LGG_ERR, "%s: cannot get ECDH curve", __FUNCTION__);
+    if (!ecdh) log_msg(LGG_ERR, "%s: cannot get ECDH curve", __FUNCTION__);
     SSL_CTX_set_tmp_ecdh(sslctx, ecdh);
     EC_KEY_free(ecdh);
 #else
-    int glist [] = { NID_X9_62_prime256v1 };
-    SSL_CTX_set1_groups(sslctx, glist, sizeof(glist)/sizeof(glist[0]));
+    int glist[] = {NID_X9_62_prime256v1};
+    SSL_CTX_set1_groups(sslctx, glist, sizeof(glist) / sizeof(glist[0]));
 #endif
 
-    SSL_CTX_set_options(sslctx,
-          SSL_OP_SINGLE_DH_USE |
-          SSL_MODE_RELEASE_BUFFERS |
-          SSL_OP_NO_COMPRESSION | SSL_OP_NO_TICKET |
-          SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1_1 |
-          SSL_OP_CIPHER_SERVER_PREFERENCE);
+    SSL_CTX_set_options(sslctx, SSL_OP_SINGLE_DH_USE | SSL_MODE_RELEASE_BUFFERS | SSL_OP_NO_COMPRESSION | SSL_OP_NO_TICKET | SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1_1 | SSL_OP_CIPHER_SERVER_PREFERENCE);
     /* server-side caching */
     SSL_CTX_set_session_cache_mode(sslctx, SSL_SESS_CACHE_NO_AUTO_CLEAR | SSL_SESS_CACHE_SERVER);
     SSL_CTX_set_timeout(sslctx, PIXEL_SSL_SESS_TIMEOUT);
     SSL_CTX_sess_set_cache_size(sslctx, 1);
-    if (SSL_CTX_set_cipher_list(sslctx, PIXELSERV_CIPHER_LIST) <= 0)
-        log_msg(LGG_DEBUG, "%s: failed to set cipher list", __FUNCTION__);
+    if (SSL_CTX_set_cipher_list(sslctx, PIXELSERV_CIPHER_LIST) <= 0) log_msg(LGG_DEBUG, "%s: failed to set cipher list", __FUNCTION__);
 #ifdef TLS1_3_VERSION
     SSL_CTX_set1_groups_list(sslctx, "X25519:P-256");
     SSL_CTX_set_min_proto_version(sslctx, TLS1_VERSION);
     SSL_CTX_set_max_proto_version(sslctx, TLS1_3_VERSION);
-    if (SSL_CTX_set_ciphersuites(sslctx, PIXELSERV_TLSV1_3_CIPHERS) <= 0)
-        log_msg(LGG_DEBUG, "%s: failed to set TLSv1.3 ciphersuites", __FUNCTION__);
+    if (SSL_CTX_set_ciphersuites(sslctx, PIXELSERV_TLSV1_3_CIPHERS) <= 0) log_msg(LGG_DEBUG, "%s: failed to set TLSv1.3 ciphersuites", __FUNCTION__);
 #endif
-    if(SSL_CTX_use_certificate_file(sslctx, full_pem_path, SSL_FILETYPE_PEM) <= 0
-       || SSL_CTX_use_PrivateKey_file(sslctx, full_pem_path, SSL_FILETYPE_PEM) <= 0)
-    {
+    if (SSL_CTX_use_certificate_file(sslctx, full_pem_path, SSL_FILETYPE_PEM) <= 0 || SSL_CTX_use_PrivateKey_file(sslctx, full_pem_path, SSL_FILETYPE_PEM) <= 0) {
         SSL_CTX_free(sslctx);
         log_msg(LGG_ERR, "%s: cannot find or use %s\n", __FUNCTION__, full_pem_path);
         return NULL;
     }
     if (cachain) {
-        X509_INFO *inf; int i;
-        for (i=sk_X509_INFO_num(cachain)-1; i >= 0; i--) {
-            if ((inf = sk_X509_INFO_value(cachain, i)) && inf->x509 &&
-                    !SSL_CTX_add_extra_chain_cert(sslctx, X509_dup(inf->x509)))
-            {
+        X509_INFO *inf;
+        int i;
+        for (i = sk_X509_INFO_num(cachain) - 1; i >= 0; i--) {
+            if ((inf = sk_X509_INFO_value(cachain, i)) && inf->x509 && !SSL_CTX_add_extra_chain_cert(sslctx, X509_dup(inf->x509))) {
                 SSL_CTX_free(sslctx);
-                log_msg(LGG_ERR, "%s: cannot add CA cert %d\n", i, __FUNCTION__);  /* X509_ref_up requires >= v1.1 */
+                log_msg(LGG_ERR, "%s: cannot add CA cert %d\n", i, __FUNCTION__); /* X509_ref_up requires >= v1.1 */
                 return NULL;
             }
         }
@@ -971,25 +892,18 @@ static SSL_CTX* create_child_sslctx(const char* full_pem_path, const STACK_OF(X5
     return sslctx;
 }
 
-SSL_CTX* create_default_sslctx(const char *pem_dir)
-{
-    if (g_sslctx)
-        return g_sslctx;
+SSL_CTX *create_default_sslctx(const char *pem_dir) {
+    if (g_sslctx) return g_sslctx;
 
     g_sslctx = SSL_CTX_new(SSLv23_server_method());
-    SSL_CTX_set_options(g_sslctx,
-          SSL_MODE_RELEASE_BUFFERS |
-          SSL_OP_NO_COMPRESSION |
-          SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1_1 |
-          SSL_OP_CIPHER_SERVER_PREFERENCE);
+    SSL_CTX_set_options(g_sslctx, SSL_MODE_RELEASE_BUFFERS | SSL_OP_NO_COMPRESSION | SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1_1 | SSL_OP_CIPHER_SERVER_PREFERENCE);
     SSL_CTX_sess_set_cache_size(g_sslctx, PIXEL_SSL_SESS_CACHE_SIZE);
     SSL_CTX_set_session_cache_mode(g_sslctx, SSL_SESS_CACHE_SERVER);
     SSL_CTX_set_timeout(g_sslctx, PIXEL_SSL_SESS_TIMEOUT);
-/*    // cb for server-side caching
-    SSL_CTX_sess_set_new_cb(g_sslctx, new_session);
-    SSL_CTX_sess_set_remove_cb(g_sslctx, remove_session); */
-    if (SSL_CTX_set_cipher_list(g_sslctx, PIXELSERV_CIPHER_LIST) <= 0)
-        log_msg(LGG_DEBUG, "cipher_list cannot be set");
+    /*    // cb for server-side caching
+        SSL_CTX_sess_set_new_cb(g_sslctx, new_session);
+        SSL_CTX_sess_set_remove_cb(g_sslctx, remove_session); */
+    if (SSL_CTX_set_cipher_list(g_sslctx, PIXELSERV_CIPHER_LIST) <= 0) log_msg(LGG_DEBUG, "cipher_list cannot be set");
 #ifndef TLS1_3_VERSION
     SSL_CTX_set_tlsext_servername_callback(g_sslctx, tls_servername_cb);
 #else
@@ -999,30 +913,21 @@ SSL_CTX* create_default_sslctx(const char *pem_dir)
 }
 
 int is_ssl_conn(int fd, char *srv_ip, int srv_ip_len, const int *ssl_ports, int num_ssl_ports) {
-
     char server_ip[INET6_ADDRSTRLEN] = {'\0'};
     struct sockaddr_storage sin_addr;
     socklen_t sin_addr_len = sizeof(sin_addr);
     char port[NI_MAXSERV] = {'\0'};
     int rv = 0, i;
     errno = 0;
-    getsockname(fd, (struct sockaddr*)&sin_addr, &sin_addr_len);
-    if(getnameinfo((struct sockaddr *)&sin_addr, sin_addr_len,
-                   server_ip, sizeof server_ip,
-                   port, sizeof port,
-                   NI_NUMERICHOST | NI_NUMERICSERV) != 0)
-        log_msg(LGG_ERR, "getnameinfo: %s", strerror(errno));
-    if (srv_ip)
-        strncpy(srv_ip, server_ip, srv_ip_len);
-    for(i=0; i<num_ssl_ports; i++)
-        if(atoi(port) == ssl_ports[i])
-            rv = ssl_ports[i];
+    getsockname(fd, (struct sockaddr *)&sin_addr, &sin_addr_len);
+    if (getnameinfo((struct sockaddr *)&sin_addr, sin_addr_len, server_ip, sizeof server_ip, port, sizeof port, NI_NUMERICHOST | NI_NUMERICSERV) != 0) log_msg(LGG_ERR, "getnameinfo: %s", strerror(errno));
+    if (srv_ip) strncpy(srv_ip, server_ip, srv_ip_len);
+    for (i = 0; i < num_ssl_ports; i++)
+        if (atoi(port) == ssl_ports[i]) rv = ssl_ports[i];
 #ifdef DEBUG
-    char client_ip[INET6_ADDRSTRLEN]= {'\0'};
-    getpeername(fd, (struct sockaddr*)&sin_addr, &sin_addr_len);
-    if(getnameinfo((struct sockaddr *)&sin_addr, sin_addr_len, client_ip, \
-            sizeof client_ip, NULL, 0, NI_NUMERICHOST) != 0)
-        perror("getnameinfo");
+    char client_ip[INET6_ADDRSTRLEN] = {'\0'};
+    getpeername(fd, (struct sockaddr *)&sin_addr, &sin_addr_len);
+    if (getnameinfo((struct sockaddr *)&sin_addr, sin_addr_len, client_ip, sizeof client_ip, NULL, 0, NI_NUMERICHOST) != 0) perror("getnameinfo");
     printf("** NEW CONNECTION ** %s:%s\n", client_ip, port);
 #endif
 
@@ -1030,8 +935,7 @@ int is_ssl_conn(int fd, char *srv_ip, int srv_ip_len, const int *ssl_ports, int 
 }
 
 #ifdef TLS1_3_VERSION
-char* read_tls_early_data(SSL *ssl, int *err)
-{
+char *read_tls_early_data(SSL *ssl, int *err) {
     ssize_t buf_siz = PIXEL_TLS_EARLYDATA_SIZE;
     char *buf, *pbuf;
     int count = 0;
@@ -1066,16 +970,16 @@ char* read_tls_early_data(SSL *ssl, int *err)
         }
         /* SSL_READ_EARLY_DATA_ERROR */
         switch (SSL_get_error(ssl, 0)) {
-        case SSL_ERROR_WANT_WRITE:
-        case SSL_ERROR_WANT_READ:
-        case SSL_ERROR_WANT_ASYNC:
-            if (count++ < 10) /* 600ms total */
-              continue;
-              /* fall through */
-        default:
-            *err = SSL_get_error(ssl, 0);
-            log_msg(LGG_DEBUG, "%s error: %d count: %d\n", __FUNCTION__, *err, count);
-            goto err_quit;
+            case SSL_ERROR_WANT_WRITE:
+            case SSL_ERROR_WANT_READ:
+            case SSL_ERROR_WANT_ASYNC:
+                if (count++ < 10) /* 600ms total */
+                    continue;
+                /* fall through */
+            default:
+                *err = SSL_get_error(ssl, 0);
+                log_msg(LGG_DEBUG, "%s error: %d count: %d\n", __FUNCTION__, *err, count);
+                goto err_quit;
         }
     }
 #ifdef DEBUG
@@ -1090,8 +994,7 @@ err_quit:
 }
 #endif
 
-void run_benchmark(const cert_tlstor_t *ct, const char *cert)
-{
+void run_benchmark(const cert_tlstor_t *ct, const char *cert) {
     int c, d;
     char *cert_file = NULL, *domain;
     struct stat st;
@@ -1100,36 +1003,31 @@ void run_benchmark(const cert_tlstor_t *ct, const char *cert)
     SSL_CTX *sslctx = NULL;
 
     printf("CERT_PATH: %s\n", ct->pem_dir);
-    if (ct->cachain == NULL)
-        goto quit;
+    if (ct->cachain == NULL) goto quit;
 
     printf("CERT_FILE: ");
     if (cert) {
-        if (asprintf(&cert_file, "%s/%s", ct->pem_dir, cert) < 0 \
-            || stat(cert_file, &st) != 0)
-        {
+        if (asprintf(&cert_file, "%s/%s", ct->pem_dir, cert) < 0 || stat(cert_file, &st) != 0) {
             printf("%s not found\n", cert);
             goto quit;
         }
     } else
         cert = "_.bing.com";
-    if (asprintf(&cert_file, "%s/%s", ct->pem_dir, cert) > 0)
-      printf("%s\n", cert);
+    if (asprintf(&cert_file, "%s/%s", ct->pem_dir, cert) > 0) printf("%s\n", cert);
 
-    if (asprintf(&domain, "%s", cert) > 0 && domain[0] == '_')
-      domain[0] = '*';
+    if (asprintf(&domain, "%s", cert) > 0 && domain[0] == '_') domain[0] = '*';
 
-    r_tm0 = 0; g_tm0 = 0;
-    for (c=1; c<=10; c++) {
+    r_tm0 = 0;
+    g_tm0 = 0;
+    for (c = 1; c <= 10; c++) {
         get_time(&tm);
-        for (d=0; d<5; d++)
-	generate_cert(domain, ct->pem_dir, ct->issuer, ct->privkey, ct->cachain);
+        for (d = 0; d < 5; d++) generate_cert(domain, ct->pem_dir, ct->issuer, ct->privkey, ct->cachain);
         tm1 = elapsed_time_msec(tm) / 5.0;
         printf("%2d. generate cert to disk: %.3f ms\t", c, tm1);
         g_tm0 += tm1;
 
         get_time(&tm);
-        for (d=0; d<5; d++) {
+        for (d = 0; d < 5; d++) {
             stat(cert_file, &st);
             sslctx = create_child_sslctx(cert_file, ct->cachain);
             sslctx_tbl_cache(cert, sslctx, 0);
@@ -1137,7 +1035,6 @@ void run_benchmark(const cert_tlstor_t *ct, const char *cert)
         tm1 = elapsed_time_msec(tm) / 5.0;
         printf("load from disk: %.3f ms\n", tm1);
         r_tm0 += tm1;
-
     }
     printf("generate to disk average: %.3f ms\n", g_tm0 / 10.0);
     printf("  load from disk average: %.3f ms\n", r_tm0 / 10.0);
