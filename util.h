@@ -1,5 +1,7 @@
 #ifndef UTIL_H
 #define UTIL_H
+#include <stddef.h>  // für size_t
+#include <stdlib.h>  // ebenfalls gültig, bereits teilweise vorhanden
 
 // common configuration items
 
@@ -23,7 +25,7 @@
 #include <openssl/ssl.h>
 
 // preprocessor defines
-#define VERSION "3.0.15"
+#define VERSION "2.4"
 
 #define BACKLOG SOMAXCONN       // how many pending connections queue will hold
 #define DEFAULT_IP "*"          // default IP address ALL - use this in messages only
@@ -46,6 +48,14 @@
 
 # define DEFAULT_STATS_URL "/servstats"
 # define DEFAULT_STATS_TEXT_URL "/servstats.txt"
+
+#include "certs.h"          // <- WICHTIG: vor pixel_cert_pipe!
+#include <stddef.h>         // <- für size_t
+#include <errno.h>
+#include <netdb.h>
+
+extern char pixel_cert_pipe[PIXELSERV_MAX_PATH];
+void generate_random_pipe_path(char *buffer, size_t buflen);
 
 /* taken from glibc unistd.h and fixes musl */
 #ifndef TEMP_FAILURE_RETRY
