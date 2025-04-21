@@ -25,8 +25,8 @@
 #ifndef FAVICON_H
 #define FAVICON_H
 
-unsigned char  favicon_ico[]   = { /* â€¦ */ };
-unsigned int   favicon_ico_len = /* â€¦ */;
+unsigned char  favicon_ico[]   = { /* … */ };
+unsigned int   favicon_ico_len = /* … */;
 
 #endif /* FAVICON_H */
 
@@ -886,7 +886,7 @@ end_post:
           } else if (!strncmp(path, "/favicon.ico", 12)) {
     // favicon aus eingebettetem Header ausliefern
     size_t favicon_len = favicon_ico_len;
-    // HTTPâ€‘Header
+    // HTTP‑Header
     char hdr[128];
     int hdrlen = snprintf(hdr, sizeof hdr,
         "HTTP/1.1 200 OK\r\n"
