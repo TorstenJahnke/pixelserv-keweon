@@ -94,12 +94,6 @@ and follow the on-screen instructions.
 pixelserv-tls <listening ip>
 ````
 
-Check out the [man page](https://github.com/kvic-z/pixelserv-tls/wiki/Command-Line-Options) for customization and command line options.
-
-## Notes
-
-Announcements are made through [kazoo.ga/pixelserv-tls](https://kazoo.ga/pixelserv-tls/). A discussion [thread](http://www.snbforums.com/threads/pixelserv-a-better-one-pixel-webserver-for-adblock.26114) is also available on SNBforums.
-
 ## Dones
 1. Fixed compile errors
 2. Fixed memory leaks (quick and dirty)
