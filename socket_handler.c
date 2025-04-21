@@ -1086,6 +1086,12 @@ end_post:
                     TESTPRINT("Sending txt response\n");
                     response = httpnulltext;
                     rsize = sizeof httpnulltext - 1;
+                  } else if (!strncasecmp(ext, ".asp", 4) || !strncasecmp(ext, ".aspx", 5)) {
+                    // ASP/ASPX-Dateien als leere HTML-Antwort behandeln
+                    pipedata.status = SEND_TXT;
+                    TESTPRINT("Sending empty HTML for ASP/ASPX\n");
+                    response = httpnulltext;
+                    rsize = sizeof httpnulltext - 1;
                   } else {
                     TESTPRINT("Sending ufe response\n");
                     pipedata.status = SEND_UNK_EXT;
