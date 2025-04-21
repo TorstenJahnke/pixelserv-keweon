@@ -1,4 +1,6 @@
-/*
+/* 
+favicon.h
+
 Note and create favicon.h:
 1. Download xdd
 2. Create a C-Code for this:
@@ -8,6 +10,7 @@ add the next lines and - done
 
 #ifndef FAVICON_H
 #define FAVICON_H
+
 extern unsigned char favicon_ico[];
 extern unsigned int  favicon_ico_len;
 
