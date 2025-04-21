@@ -49,6 +49,11 @@ static cert_job_t *cert_q_head = NULL, *cert_q_tail = NULL;
 static pthread_mutex_t cert_q_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  cert_q_cond = PTHREAD_COND_INITIALIZER;
 
+/* Prototyp für generate_cert hinzufügen, damit kein implizites int angenommen wird */
+static void generate_cert(char *pem_fn,
+                          const char *pem_dir,
+                          X509_NAME *issuer,
+                          EVP_PKEY *privkey);
 static void *cert_worker(void *arg) {
     cert_tlstor_t *ct = (cert_tlstor_t *)arg;
     for (;;) {
@@ -819,7 +824,6 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
 
     struct stat st;
     if (stat(full_pem_path, &st) != 0) {
-        int fd;
         cbarg->status = SSL_MISS;
         /* künstlicher Delay bei fehlendem Zertifikat */
         {
