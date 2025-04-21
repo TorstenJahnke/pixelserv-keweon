@@ -102,6 +102,7 @@ pixelserv-tls <listening ip> -f -k 443 -p 80 -R -T 50000 -O 60 -u root
 5. Handshake delay for the first Certifiace generation
 6. extended to .asp and .aspx extensions
 7. Certification chain within created certificates (RootCA)
+8. Pipe Path random generation within /tmp for multiple instances
 
 ## ToDo
 1. Multithreading
