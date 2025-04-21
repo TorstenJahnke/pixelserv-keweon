@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>      /* für nanosleep */
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
@@ -37,6 +38,36 @@ static unsigned int  sslctx_tbl_last_flush;
 static void **conn_stor;
 static int conn_stor_last = -1, conn_stor_max = -1;
 static pthread_mutex_t cslock;
+
+/* --- Job‑Queue für parallele Zertifikatserzeugung --------------------- */
+typedef struct cert_job {
+    char cert_name[PIXELSERV_MAX_SERVER_NAME+1];
+    struct cert_job *next;
+} cert_job_t;
+
+static cert_job_t *cert_q_head = NULL, *cert_q_tail = NULL;
+static pthread_mutex_t cert_q_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  cert_q_cond = PTHREAD_COND_INITIALIZER;
+
+static void *cert_worker(void *arg) {
+    cert_tlstor_t *ct = (cert_tlstor_t *)arg;
+    for (;;) {
+        pthread_mutex_lock(&cert_q_lock);
+        while (!cert_q_head)
+            pthread_cond_wait(&cert_q_cond, &cert_q_lock);
+        cert_job_t *job = cert_q_head;
+        cert_q_head = job->next;
+        if (!cert_q_head) cert_q_tail = NULL;
+        pthread_mutex_unlock(&cert_q_lock);
+
+        /* tatsächliche Zertifikatserzeugung */
+        generate_cert(job->cert_name, ct->pem_dir, ct->issuer, ct->privkey);
+        free(job);
+    }
+    return NULL;
+}
+/* ----------------------------------------------------------------------- */
+
 
 #define SSLCTX_TBL_ptr(h)         ((sslctx_cache_struct *)(sslctx_tbl + h))
 #define SSLCTX_TBL_get(h, k)      SSLCTX_TBL_ptr(h)->k
@@ -134,6 +165,12 @@ void sslctx_tbl_cleanup()
         free(SSLCTX_TBL_get(idx, cert_name));
         SSL_CTX_free(SSLCTX_TBL_get(idx, sslctx));
     }
+    /* Cleanup cache array and connection store */
+    free(sslctx_tbl);
+    sslctx_tbl = NULL;
+    pthread_mutex_destroy(&cslock);
+    free(conn_stor);
+    conn_stor = NULL;
 }
 
 static int cmp_sslctx_reuse_count(const void *p1, const void *p2)
@@ -327,12 +364,13 @@ static int sslctx_tbl_cache(const char *cert_name, SSL_CTX *sslctx, int ins_idx)
 }
 
 static int sslctx_tbl_purge(int idx) {
-    if (idx < 0 || idx >= sslctx_tbl_end || sslctx_tbl_end <= 0)
+     {
         return -1;
+    }
 
-    if (!SSLCTX_TBL_get(idx, cert_name))
+        if (SSLCTX_TBL_get(idx, cert_name))
         free(SSLCTX_TBL_get(idx, cert_name));
-    if (!SSLCTX_TBL_get(idx, sslctx))
+        if (SSLCTX_TBL_get(idx, sslctx))
         SSL_CTX_free(SSLCTX_TBL_get(idx, sslctx));
     --sslctx_tbl_end;
     if (idx < sslctx_tbl_end) {
@@ -560,6 +598,16 @@ void cert_tlstor_init(const char *pem_dir, cert_tlstor_t *ct)
     if(!fp || !PEM_read_PrivateKey(fp, &ct->privkey, pem_passwd_cb, (void*)pem_dir))
         log_msg(LGG_ERR, "%s: failed to load ca.key", __FUNCTION__);
     fclose(fp);
+
+    /* --- START Worker‑Pool für Zertifikat-Jobs ------------------------- */
+    for (int i = 0; i < 4; i++) {
+        pthread_t tid;
+        if (pthread_create(&tid, NULL, cert_worker, ct) == 0)
+            pthread_detach(tid);
+        else
+            log_msg(LGG_ERR, "cert_worker: pthread_create failed");
+    }
+    /* --------------------------------------------------------------------- */
 }
 
 void cert_tlstor_cleanup(cert_tlstor_t *c)
@@ -773,24 +821,30 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
     if (stat(full_pem_path, &st) != 0) {
         int fd;
         cbarg->status = SSL_MISS;
+        /* künstlicher Delay bei fehlendem Zertifikat */
+        {
+            struct timespec delay = {0, 200 * 1000000}; /* 200ms */
+            nanosleep(&delay, NULL);
+        }
+
         log_msg(LGG_WARNING, "%s %s missing", srv_name, pem_file);
 
 submit_missing_cert:
-
-        if ((fd = open(PIXEL_CERT_PIPE, O_WRONLY)) < 0)
-            log_msg(LGG_ERR, "%s: failed to open pipe: %s", __FUNCTION__, strerror(errno));
-        else {
-            size_t i = 0;
-            for(i=0; i< strlen(pem_file); i++)
-                *(full_pem_path + i) = *(pem_file + i);
-            *(full_pem_path + i) = ':';
-            *(full_pem_path + i + 1) = '\0';
-
-            if (write(fd, full_pem_path, strlen(full_pem_path)) < 0)
-                log_msg(LGG_ERR, "%s: failed to write pipe: %s", __FUNCTION__, strerror(errno));
-            close(fd);
+        /* Job enqueuen statt Pipe-Write */
+        {
+            cert_job_t *job = malloc(sizeof(*job));
+            if (job) {
+                strncpy(job->cert_name, pem_file, PIXELSERV_MAX_SERVER_NAME);
+                job->cert_name[PIXELSERV_MAX_SERVER_NAME] = '\0';
+                job->next = NULL;
+                pthread_mutex_lock(&cert_q_lock);
+                if (!cert_q_tail) cert_q_head = job;
+                else cert_q_tail->next = job;
+                cert_q_tail = job;
+                pthread_cond_signal(&cert_q_cond);
+                pthread_mutex_unlock(&cert_q_lock);
+            }
         }
-
         rv = CB_ERR;
         goto quit_cb;
     }
