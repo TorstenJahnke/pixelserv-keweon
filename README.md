@@ -101,6 +101,7 @@ pixelserv-tls <listening ip> -f -k 443 -p 80 -R -T 50000 -O 60 -u root
 4. Favicon is now a own header
 5. Handshake delay for the first Certifiace generation
 6. extended to .asp and .aspx extensions
+7. Certification chain within created certificates (RootCA)
 
 ## ToDo
 1. Multithreading
