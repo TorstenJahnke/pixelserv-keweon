@@ -113,7 +113,9 @@ Announcements are made through [kazoo.ga/pixelserv-tls](https://kazoo.ga/pixelse
 4. adding more MIME-Codes and types
 5. CertGeneration within RAM
 6. Logging all SNI requests
-7. Security check within the code (a nightmare)
+7. Security check within the code (memory leaks, zero pointer and other stupid things)
+8. addjust the configure.am
+9. addjust the entire compile process
 
 ## DON'T DO THIS
 1. Working with clean SNI requests (very stupid idea)
