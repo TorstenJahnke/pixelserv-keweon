@@ -7,13 +7,17 @@
 
 #define PIXEL_SSL_SESS_CACHE_SIZE 128*20
 #define PIXEL_SSL_SESS_TIMEOUT 3600 /* seconds */
+/* 
 #define PIXEL_CERT_PIPE "/tmp/pixelcerts"
+*/
 #define PIXEL_TLS_EARLYDATA_SIZE 16384
 #ifndef DEFAULT_PEM_PATH
 #define DEFAULT_PEM_PATH "/opt/var/cache/pixelserv"
 #endif
 #define PIXELSERV_MAX_PATH 1024
 #define PIXELSERV_MAX_SERVER_NAME 255
+
+extern char pixel_cert_pipe[PIXELSERV_MAX_PATH];
 
 /* ECDHE-RSA-AES128-GCM-SHA256 :
    Android >= 4.4.2; Chrome >= 51; Firefox >= 49;
