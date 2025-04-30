@@ -385,7 +385,7 @@ if (chown(pixel_cert_pipe, pw->pw_uid, pw->pw_gid) < 0) {
   }
 
   memset(&hints, 0, sizeof hints);
-  hints.ai_family = AF_UNSPEC;  // AF_UNSPEC - AF_INET restricts to IPV4
+  hints.ai_family = AF_INET;  // AF_UNSPEC - AF_INET restricts to IPV4
   hints.ai_socktype = SOCK_STREAM;
   if (!use_ip) {
     hints.ai_flags = AI_PASSIVE;  // use my IP
@@ -416,7 +416,7 @@ if (chown(pixel_cert_pipe, pw->pw_uid, pw->pw_gid) < 0) {
       exit(EXIT_FAILURE);
     }
 
-if ( ((sockfd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol)) < 1)
+    if ( ((sockfd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol)) < 1)
       || setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int))
       || setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &(int){ 1 }, sizeof(int))
 #ifdef IF_MODE
@@ -427,7 +427,10 @@ if ( ((sockfd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_
       || setsockopt(sockfd, IPPROTO_TCP, TCP_FASTOPEN, &(int){ TCP_FASTOPEN_QLEN }, sizeof(int))
 #  endif
 #endif
-) {
+      || bind(sockfd, servinfo->ai_addr, servinfo->ai_addrlen)
+      || listen(sockfd, BACKLOG)
+      || fcntl(sockfd, F_SETFL, fcntl(sockfd, F_GETFL) | O_NONBLOCK)
+      ) {
 #ifdef IF_MODE
       log_msg(LGG_CRIT, "Abort: %m - %s:%s:%s", ifname, ip_addr, port);
 #else
@@ -436,33 +439,12 @@ if ( ((sockfd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_
       exit(EXIT_FAILURE);
     }
 
-// IPv6-spezifische Optionen
-if (servinfo->ai_family == AF_INET6) {
-    log_msg(LGG_INFO, "IPv6 connection initialized.");
-    setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY, &(int){ 0 }, sizeof(int));
-}
-
-if (bind(sockfd, servinfo->ai_addr, servinfo->ai_addrlen) < 0) {
-    log_msg(LOG_CRIT, "Bind failed: %m - %s:%s", ip_addr, port);
-    exit(EXIT_FAILURE);
-}
-
-if (listen(sockfd, BACKLOG) < 0) {
-    log_msg(LOG_CRIT, "Listen failed: %m");
-    exit(EXIT_FAILURE);
-}
-
-if (fcntl(sockfd, F_SETFL, fcntl(sockfd, F_GETFL) | O_NONBLOCK) < 0) {
-    log_msg(LOG_CRIT, "Failed to set non-blocking mode: %m");
-    exit(EXIT_FAILURE);
-}
-
-sockfds[i] = sockfd;
-// add descriptor to the set
-FD_SET(sockfd, &readfds);
-if (sockfd > nfds) {
-    nfds = sockfd;
-}
+    sockfds[i] = sockfd;
+    // add descriptor to the set
+    FD_SET(sockfd, &readfds);
+    if (sockfd > nfds) {
+      nfds = sockfd;
+    }
 
     freeaddrinfo(servinfo); // all done with this structure
 #ifdef IF_MODE
