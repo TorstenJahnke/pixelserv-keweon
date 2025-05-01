@@ -385,7 +385,7 @@ if (chown(pixel_cert_pipe, pw->pw_uid, pw->pw_gid) < 0) {
   }
 
   memset(&hints, 0, sizeof hints);
-  hints.ai_family = AF_INET;  // AF_UNSPEC - AF_INET restricts to IPV4
+  hints.ai_family = AF_UNSPEC;  // AF_UNSPEC - AF_UNSPEC restricts to IPV4
   hints.ai_socktype = SOCK_STREAM;
   if (!use_ip) {
     hints.ai_flags = AI_PASSIVE;  // use my IP
@@ -416,7 +416,9 @@ if (chown(pixel_cert_pipe, pw->pw_uid, pw->pw_gid) < 0) {
       exit(EXIT_FAILURE);
     }
 
+    int off = 0;
     if ( ((sockfd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol)) < 1)
+      || (servinfo->ai_family == AF_INET6 && setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof(off)))
       || setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int))
       || setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &(int){ 1 }, sizeof(int))
 #ifdef IF_MODE
