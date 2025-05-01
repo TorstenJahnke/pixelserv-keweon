@@ -98,11 +98,14 @@ pixelserv-tls <listening ip> -f -k 443 -p 80 -R -T 50000 -O 60 -u root
 1. Fixed compile errors
 2. Fixed memory leaks (quick and dirty)
 3. Added random Certificate generation Date
-4. Favicon is now a own header
+4. Favicon is now a own header filer (favicon.h)
 5. Handshake delay for the first Certifiace generation
-6. extended to .asp and .aspx extensions
+6. extended MIME extensions (.php & .jsp & .cgi & .fcgi & .do & .asmx & .cfm & .rss & .json)
 7. Certification chain within created certificates (RootCA)
 8. Pipe Path random generation within /tmp for multiple instances
+9. Fixed IPv6 connections
+10. Fixed CORS errors
+11. Started with OpenSSL 3.x upgrade (nativ)
 
 ## ToDo
 1. Multithreading
