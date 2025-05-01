@@ -558,7 +558,7 @@ free_all:
 static int pem_passwd_cb(char *buf, int size, int rwflag, void *u) {
     int rv = 0, fp;
     char *fname = NULL;
-    if (asprintf(&fname, "%s/ca.key.passphrase", (char*)u) < 0)
+    if (asprintf(&fname, "%s/rootCA/ca.key.passphrase", (char*)u) < 0)
         goto quit_cb;
 
     if ((fp = open(fname, O_RDONLY)) < 0)
@@ -584,7 +584,7 @@ void cert_tlstor_init(const char *pem_dir, cert_tlstor_t *ct)
     X509 *x509 = X509_new();
 
     memset(ct, 0, sizeof(cert_tlstor_t));
-    snprintf(cert_file, PIXELSERV_MAX_PATH, "%s/ca.crt", pem_dir);
+    snprintf(cert_file, PIXELSERV_MAX_PATH, "%s/rootCA/ca.crt", pem_dir);
     fp = fopen(cert_file, "r");
 
     if(!fp || !PEM_read_X509(fp, &x509, NULL, NULL))
@@ -621,7 +621,7 @@ void cert_tlstor_init(const char *pem_dir, cert_tlstor_t *ct)
     }
     X509_free(x509);
 
-    snprintf(cert_file, PIXELSERV_MAX_PATH, "%s/ca.key", pem_dir);
+    snprintf(cert_file, PIXELSERV_MAX_PATH, "%s/rootCA/ca.key", pem_dir);
     fp = fopen(cert_file, "r");
     if(!fp || !PEM_read_PrivateKey(fp, &ct->privkey, pem_passwd_cb, (void*)pem_dir))
         log_msg(LGG_ERR, "%s: failed to load ca.key", __FUNCTION__);
