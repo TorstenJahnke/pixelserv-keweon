@@ -851,7 +851,9 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
         cbarg->status = SSL_MISS;
         /* künstlicher Delay bei fehlendem Zertifikat */
         {
-            struct timespec delay = {0, 200 * 1000000}; /* 200ms */
+            /* Guess which stupid Chrome browser can't handle */
+            /* 200ms and needs 300ms. They annoy me */
+            struct timespec delay = {0, 300 * 1000000}; /* 300ms */
             nanosleep(&delay, NULL);
         }
 
