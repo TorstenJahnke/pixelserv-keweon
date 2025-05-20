@@ -1,3 +1,7 @@
+#define _GNU_SOURCE
+#include <stdio.h>
+#include <string.h>
+
 #include "util.h" // _GNU_SOURCE
 
 #include <ctype.h>
@@ -737,6 +741,46 @@ void* conn_handler( void *ptr )
             req_url[0] = '\0';
           }
           strcpy(req_url, req);
+          /* Stub for go-mpulse boomerang requests */
+
+log_msg(LGG_INFO, "Stubbing go-mpulse boomerang: %s%s", host, req_url);
+const char *resp =
+  "HTTP/1.1 204 No Content\r\n"
+  "Access-Control-Allow-Origin: *\r\n"
+  "Connection: close\r\n"
+  "\r\n";
+write_socket(new_fd,
+             resp,
+             strlen(resp),
+             CONN_TLSTOR(ptr, ssl),
+             &CONN_TLSTOR(ptr, early_data));
+conn_stor_relinq(ptr);
+return NULL;
+
+
+          // Simuliere Adblock mit CORS-konformer Antwort
+          if (strstr(req_url, "/simulate-block")) {
+                    log_msg(LGG_INFO, "Simulating adblock with CORS-safe response for %s", req_url);
+
+                    // 1. Leere 204-Antwort mit Access-Control-Allow-Origin: *
+                    const char *resp =
+                      "HTTP/1.1 204 No Content\r\n"
+                      "Access-Control-Allow-Origin: *\r\n"
+                      "Connection: close\r\n"
+                      "\r\n";
+
+                    // 2. Sende die Antwort – write_socket kümmert sich um TLS vs. Klartext
+                    write_socket(new_fd,
+                                 resp,
+                                 strlen(resp),
+                                 CONN_TLSTOR(ptr, ssl),
+                                 &CONN_TLSTOR(ptr, early_data));
+
+                    // 3. Aufräumen und Thread beenden
+                    conn_stor_relinq(ptr);
+                    return NULL;
+          }
+
           /* locate and copy Host */
           char *tmph = strstr_first(bufptr, "Host: "); // e.g. "Host: abc.com"
           if (tmph) {
@@ -1065,8 +1109,9 @@ write_socket(new_fd,
                     TESTPRINT("Sending txt response\n");
                     response = httpnulltext;
                     rsize = sizeof httpnulltext - 1;
-                  } else if (!strncasecmp(ext, ".asp", 4) || !strncasecmp(ext, ".aspx", 5)) {
+} else if (!strncasecmp(ext, ".asp", 4) || !strncasecmp(ext, ".aspx", 5) || !strncasecmp(ext, ".ashx", 5) || !strncasecmp(ext, ".php", 4) || !strncasecmp(ext, ".jsp", 4) || !strncasecmp(ext, ".cgi", 4) || !strncasecmp(ext, ".pl", 3) || !strncasecmp(ext, ".fcgi", 5) || !strncasecmp(ext, ".do", 3) || !strncasecmp(ext, ".action", 7) || !strncasecmp(ext, ".asmx", 5) || !strncasecmp(ext, ".svc", 4) || !strncasecmp(ext, ".cfm", 4) || !strncasecmp(ext, ".rss", 4) || !strncasecmp(ext, ".xml", 4) || !strncasecmp(ext, ".json", 5)) {
                     // ASP/ASPX-Dateien als leere HTML-Antwort behandeln
+    // ASHX-Dateien ebenfalls als leere HTML-Antwort behandeln
                     pipedata.status = SEND_TXT;
                     TESTPRINT("Sending empty HTML for ASP/ASPX\n");
                     response = httpnulltext;
