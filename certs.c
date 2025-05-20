@@ -28,7 +28,6 @@
 #  include <malloc.h>
 #endif
 
-
 static pthread_mutex_t *locks;
 static SSL_CTX *g_sslctx;
 
@@ -558,7 +557,7 @@ free_all:
 static int pem_passwd_cb(char *buf, int size, int rwflag, void *u) {
     int rv = 0, fp;
     char *fname = NULL;
-    if (asprintf(&fname, "%s/ca.key.passphrase", (char*)u) < 0)
+    if (asprintf(&fname, "%s/rootCA/ca.key.passphrase", (char*)u) < 0)
         goto quit_cb;
 
     if ((fp = open(fname, O_RDONLY)) < 0)
@@ -584,7 +583,7 @@ void cert_tlstor_init(const char *pem_dir, cert_tlstor_t *ct)
     X509 *x509 = X509_new();
 
     memset(ct, 0, sizeof(cert_tlstor_t));
-    snprintf(cert_file, PIXELSERV_MAX_PATH, "%s/ca.crt", pem_dir);
+    snprintf(cert_file, PIXELSERV_MAX_PATH, "%s/rootCA/ca.crt", pem_dir);
     fp = fopen(cert_file, "r");
 
     if(!fp || !PEM_read_X509(fp, &x509, NULL, NULL))
@@ -621,7 +620,7 @@ void cert_tlstor_init(const char *pem_dir, cert_tlstor_t *ct)
     }
     X509_free(x509);
 
-    snprintf(cert_file, PIXELSERV_MAX_PATH, "%s/ca.key", pem_dir);
+    snprintf(cert_file, PIXELSERV_MAX_PATH, "%s/rootCA/ca.key", pem_dir);
     fp = fopen(cert_file, "r");
     if(!fp || !PEM_read_PrivateKey(fp, &ct->privkey, pem_passwd_cb, (void*)pem_dir))
         log_msg(LGG_ERR, "%s: failed to load ca.key", __FUNCTION__);
@@ -850,8 +849,10 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
     if (stat(full_pem_path, &st) != 0) {
         cbarg->status = SSL_MISS;
         /* künstlicher Delay bei fehlendem Zertifikat */
+        /* jeder Browser versteht 200ms und handelt das dann aus*/
+        /* jetzt rate mal welcher verfickte Chrome Browser von Google 300ms braucht */
         {
-            struct timespec delay = {0, 200 * 1000000}; /* 200ms */
+            struct timespec delay = {0, 300 * 1000000}; /* 300ms */
             nanosleep(&delay, NULL);
         }
 
