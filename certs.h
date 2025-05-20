@@ -5,17 +5,26 @@
 #include <openssl/pem.h>
 #include <openssl/ssl.h>
 
-#define PIXEL_SSL_SESS_CACHE_SIZE 128*20
-#define PIXEL_SSL_SESS_TIMEOUT 3600 /* seconds */
-/* 
-#define PIXEL_CERT_PIPE "/tmp/pixelcerts"
+/* Ca. 1 048 576 Sessions × ~500 B ≈ 500 MB RAM */
+#define PIXEL_SSL_SESS_CACHE_SIZE   1048576
+
+/* Sessions bis zu 24 Stunden im Cache */
+#define PIXEL_SSL_SESS_TIMEOUT      86400    /* seconds (24 h) */
+
+/* Zertifikatspipe bleibt auskommentiert, wenn du sie nicht nutzt */
+/*
+#define PIXEL_CERT_PIPE           "/tmp/pixelcerts"
 */
-#define PIXEL_TLS_EARLYDATA_SIZE 16384
+
+#define PIXEL_TLS_EARLYDATA_SIZE    32768    /* 32 KiB 0-RTT */
+
+/* Standard-Pfad für generierte PEMs */
 #ifndef DEFAULT_PEM_PATH
-#define DEFAULT_PEM_PATH "/opt/var/cache/pixelserv"
+#define DEFAULT_PEM_PATH           "/opt/var/cache/pixelserv"
 #endif
-#define PIXELSERV_MAX_PATH 1024
-#define PIXELSERV_MAX_SERVER_NAME 255
+
+#define PIXELSERV_MAX_PATH          1024
+#define PIXELSERV_MAX_SERVER_NAME   255
 
 extern char pixel_cert_pipe[PIXELSERV_MAX_PATH];
 
