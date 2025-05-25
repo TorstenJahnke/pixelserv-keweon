@@ -17,6 +17,20 @@ autoreconf -i
 gmake LDFLAGS="-pthread -Wl,-z,noexecstack"
 ````
 
+
+## Build from source on FreeBSD 14.2 Datacenter Edition
+
+This for FreeBSD 14.2 Datacenter Edtition
+
+````
+autoreconf -i
+
+env CONFIG_SHELL=/usr/local/bin/bash ./configure CFLAGS="-O3 -Wall -march=native -mtune=native -pthread -D_REENTRANT -D_THREAD_SAFE -D_GNU_SOURCE -DSCALABLE -DNDEBUG -ffunction-sections -fdata-sections -fno-strict-aliasing -flto" LDFLAGS="-pthread -Wl,-z,noexecstack -Wl,-O1 -Wl,--as-needed -Wl,--gc-sections -flto" --enable-tcp-fastopen
+
+gmake clean
+gmake -j$(sysctl -n hw.ncpu)
+````
+
 ## Build from source on FreeBSD 14.2
 
 This for FreeBSD 14.2
