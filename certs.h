@@ -14,7 +14,7 @@
 #endif
 
 #define PIXEL_SSL_SESS_CACHE_SIZE 128*20
-#define PIXEL_SSL_SESS_TIMEOUT 3600 /* seconds */
+#define PIXEL_SSL_SESS_TIMEOUT 30 /* seconds - HTTPS Session Länge für AdBlock optimiert */
 #define PIXEL_TLS_EARLYDATA_SIZE 16384
 
 #ifndef DEFAULT_PEM_PATH
@@ -78,14 +78,14 @@ typedef struct {
     tlsext_cb_arg_struct v;
 } conn_tlstor_struct;
 
-/* SSL context cache structure */
+/* SSL context cache structure - optimized with atomic operations */
 typedef struct {
     int alloc_len;
     char *cert_name;
-    unsigned int last_use; /* seconds since process up */
-    int reuse_count;
+    unsigned int last_use; /* seconds since process up - made atomic in implementation */
+    int reuse_count;       /* made atomic in implementation */
     SSL_CTX *sslctx;
-    pthread_mutex_t lock;
+    pthread_mutex_t lock;  /* Keep individual locks for SSL_CTX operations */
 } sslctx_cache_struct;
 
 #define CONN_TLSTOR(p, e) ((conn_tlstor_struct*)p)->e
@@ -105,7 +105,7 @@ void sslctx_tbl_save(const char* pem_dir);
 void sslctx_tbl_lock(int idx);
 void sslctx_tbl_unlock(int idx);
 
-/* Statistics functions */
+/* Statistics functions - now with atomic operations */
 int sslctx_tbl_get_cnt_total(void);
 int sslctx_tbl_get_cnt_hit(void);
 int sslctx_tbl_get_cnt_miss(void);
@@ -119,7 +119,7 @@ int sslctx_tbl_get_sess_purge(void);
 SSL_CTX *create_default_sslctx(const char *pem_dir);
 int is_ssl_conn(int fd, char *srv_ip, int srv_ip_len, const int *ssl_ports, int num_ssl_ports);
 
-/* Connection storage management */
+/* Connection storage management - keep original API */
 void conn_stor_init(int slots);
 void conn_stor_relinq(conn_tlstor_struct *p);
 conn_tlstor_struct* conn_stor_acquire(void);

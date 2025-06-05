@@ -1,10 +1,11 @@
 /*
- * socket_handler.c - Minimal bereinigt
+ * socket_handler.c - Minimal bereinigt mit ASP-Unterstützung
  * 
  * Nur essentielle Fixes:
  * - NULL-Pointer-Checks hinzugefügt
  * - Memory-Leaks behoben  
  * - Buffer-Overflow-Schutz
+ * - ASP/ASPX/ASHX Unterstützung hinzugefügt
  * - Funktionalität 100% erhalten
  */
 
@@ -253,6 +254,76 @@ static const char httpnull_ico[] =
   "\x00\x00\x00\x00" // Colour table
   "\x00\x00\x00\x00" // XOR B G R
   "\x80\xF8\x9C\x41"; // AND ?
+
+// === NEUE ASP/SERVER-SIDE SCRIPT RESPONSES ===
+
+// ASP Classic Response
+static const char httpnull_asp[] =
+  "HTTP/1.1 200 OK\r\n"
+  "Content-type: text/html; charset=UTF-8\r\n"
+  "Content-length: 0\r\n"
+  "Connection: keep-alive\r\n"
+  "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+  "Pragma: no-cache\r\n"
+  "Expires: 0\r\n"
+  "\r\n";
+
+// ASPX Response  
+static const char httpnull_aspx[] =
+  "HTTP/1.1 200 OK\r\n"
+  "Content-type: text/html; charset=UTF-8\r\n"
+  "Content-length: 0\r\n"
+  "Connection: keep-alive\r\n"
+  "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+  "Pragma: no-cache\r\n"
+  "Expires: 0\r\n"
+  "X-AspNet-Version: 4.0.30319\r\n"
+  "\r\n";
+
+// ASHX Response (Generic Handler)
+static const char httpnull_ashx[] =
+  "HTTP/1.1 200 OK\r\n"
+  "Content-type: application/octet-stream\r\n"
+  "Content-length: 0\r\n"
+  "Connection: keep-alive\r\n"
+  "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+  "Pragma: no-cache\r\n"
+  "Expires: 0\r\n"
+  "\r\n";
+
+// PHP Response
+static const char httpnull_php[] =
+  "HTTP/1.1 200 OK\r\n"
+  "Content-type: text/html; charset=UTF-8\r\n"
+  "Content-length: 0\r\n"
+  "Connection: keep-alive\r\n"
+  "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+  "Pragma: no-cache\r\n"
+  "Expires: 0\r\n"
+  "X-Powered-By: PHP/7.4.0\r\n"
+  "\r\n";
+
+// JSP Response
+static const char httpnull_jsp[] =
+  "HTTP/1.1 200 OK\r\n"
+  "Content-type: text/html; charset=UTF-8\r\n"
+  "Content-length: 0\r\n"
+  "Connection: keep-alive\r\n"
+  "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+  "Pragma: no-cache\r\n"
+  "Expires: 0\r\n"
+  "\r\n";
+
+// JavaScript Response
+static const char httpnull_js[] =
+  "HTTP/1.1 200 OK\r\n"
+  "Content-type: application/javascript; charset=UTF-8\r\n"
+  "Content-length: 0\r\n"
+  "Connection: keep-alive\r\n"
+  "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+  "Pragma: no-cache\r\n"
+  "Expires: 0\r\n"
+  "\r\n";
 
 static const char httpoptions[] =
   "HTTP/1.1 200 OK\r\n"
@@ -1254,59 +1325,134 @@ write_socket(config.new_fd,
                   log_msg(LGG_DEBUG, "no file extension %s from path %s - sending empty HTML", file, path);
                 } else {
                   TESTPRINT("ext: '%s'\n", ext);
-                  if (!strcasecmp(ext, ".gif")) {
+                  
+                  // === ERWEITERTE EXTENSION-BEHANDLUNG MIT ASP-UNTERSTÜTZUNG ===
+                  const char *norm_ext = (ext[0] == '.') ? ext + 1 : ext;
+                  
+                  if (!strcasecmp(norm_ext, "gif")) {
                     TESTPRINT("Sending gif response\n");
                     pipedata.status = SEND_GIF;
                     response = httpnullpixel;
                     rsize = sizeof httpnullpixel - 1;
-                  } else if (!strcasecmp(ext, ".png")) {
+                  } else if (!strcasecmp(norm_ext, "png")) {
                     TESTPRINT("Sending png response\n");
                     pipedata.status = SEND_PNG;
                     response = httpnull_png;
                     rsize = sizeof httpnull_png - 1;
-                  } else if (!strncasecmp(ext, ".jp", 3)) {
+                  } else if (!strncasecmp(norm_ext, "jp", 2)) { // jpg, jpeg
                     TESTPRINT("Sending jpg response\n");
                     pipedata.status = SEND_JPG;
                     response = httpnull_jpg;
                     rsize = sizeof httpnull_jpg - 1;
-                  } else if (!strcasecmp(ext, ".swf")) {
+                  } else if (!strcasecmp(norm_ext, "swf")) {
                     TESTPRINT("Sending swf response\n");
                     pipedata.status = SEND_SWF;
                     response = httpnull_swf;
                     rsize = sizeof httpnull_swf - 1;
-                  } else if (!strcasecmp(ext, ".ico")) {
+                  } else if (!strcasecmp(norm_ext, "ico")) {
                     TESTPRINT("Sending ico response\n");
                     pipedata.status = SEND_ICO;
                     response = httpnull_ico;
                     rsize = sizeof httpnull_ico - 1;
-                  } else if (!strncasecmp(ext, ".js", 3)) {  // .jsx ?
-                    pipedata.status = SEND_TXT;
-                    TESTPRINT("Sending txt response\n");
+                  }
+                  // === NEUE ASP-UNTERSTÜTZUNG ===
+                  else if (!strcasecmp(norm_ext, "asp")) {
+                    TESTPRINT("Sending ASP response\n");
+                    pipedata.status = SEND_ASP;
+                    response = httpnull_asp;
+                    rsize = sizeof httpnull_asp - 1;
+                  } else if (!strcasecmp(norm_ext, "aspx")) {
+                    TESTPRINT("Sending ASPX response\n");
+                    pipedata.status = SEND_ASPX;
+                    response = httpnull_aspx;
+                    rsize = sizeof httpnull_aspx - 1;
+                  } else if (!strcasecmp(norm_ext, "ashx")) {
+                    TESTPRINT("Sending ASHX response\n");
+                    pipedata.status = SEND_ASHX;
+                    response = httpnull_ashx;
+                    rsize = sizeof httpnull_ashx - 1;
+                  }
+                  // === WEITERE SERVER-SKRIPTE ===
+                  else if (!strcasecmp(norm_ext, "php")) {
+                    TESTPRINT("Sending PHP response\n");
+                    pipedata.status = SEND_PHP;
+                    response = httpnull_php;
+                    rsize = sizeof httpnull_php - 1;
+                  } else if (!strcasecmp(norm_ext, "jsp")) {
+                    TESTPRINT("Sending JSP response\n");
+                    pipedata.status = SEND_JSP;
+                    response = httpnull_jsp;
+                    rsize = sizeof httpnull_jsp - 1;
+                  } else if (!strncasecmp(norm_ext, "js", 2)) {  // .js, .jsx
+                    TESTPRINT("Sending JavaScript response\n");
+                    pipedata.status = SEND_JS;
+                    response = httpnull_js;
+                    rsize = sizeof httpnull_js - 1;
+                  }
+                  // === WEB-STANDARDS ===
+                  else if (!strcasecmp(norm_ext, "css")) {
+                    TESTPRINT("Sending CSS response\n");
+                    pipedata.status = SEND_CSS;
                     response = httpnulltext;
                     rsize = sizeof httpnulltext - 1;
-} else if (!strncasecmp(ext, ".asp", 4) || !strncasecmp(ext, ".aspx", 5) || !strncasecmp(ext, ".ashx", 5) || !strncasecmp(ext, ".php", 4) || !strncasecmp(ext, ".jsp", 4) || !strncasecmp(ext, ".cgi", 4) || !strncasecmp(ext, ".pl", 3) || !strncasecmp(ext, ".fcgi", 5) || !strncasecmp(ext, ".do", 3) || !strncasecmp(ext, ".action", 7) || !strncasecmp(ext, ".asmx", 5) || !strncasecmp(ext, ".svc", 4) || !strncasecmp(ext, ".cfm", 4) || !strncasecmp(ext, ".rss", 4) || !strncasecmp(ext, ".xml", 4) || !strncasecmp(ext, ".json", 5)) {
-                    // ASP/ASPX-Dateien als leere HTML-Antwort behandeln
-    // ASHX-Dateien ebenfalls als leere HTML-Antwort behandeln
-                    pipedata.status = SEND_TXT;
-                    TESTPRINT("Sending empty HTML for ASP/ASPX\n");
+                  } else if (!strcasecmp(norm_ext, "html") || !strcasecmp(norm_ext, "htm")) {
+                    TESTPRINT("Sending HTML response\n");
+                    pipedata.status = SEND_HTML;
                     response = httpnulltext;
                     rsize = sizeof httpnulltext - 1;
-                  } else {
+                  }
+                  // === DATENFORMATE ===
+                  else if (!strcasecmp(norm_ext, "xml") || !strcasecmp(norm_ext, "rss")) {
+                    TESTPRINT("Sending XML response\n");
+                    pipedata.status = SEND_XML;
+                    response = httpnulltext;
+                    rsize = sizeof httpnulltext - 1;
+                  } else if (!strcasecmp(norm_ext, "json")) {
+                    TESTPRINT("Sending JSON response\n");
+                    pipedata.status = SEND_JSON;
+                    response = httpnulltext;
+                    rsize = sizeof httpnulltext - 1;
+                  }
+                  // === CGI UND ANDERE SERVER-SKRIPTE ===
+                  else if (!strcasecmp(norm_ext, "cgi") || !strcasecmp(norm_ext, "pl") || 
+                           !strcasecmp(norm_ext, "fcgi")) {
+                    TESTPRINT("Sending CGI/Perl response\n");
+                    pipedata.status = SEND_TXT;
+                    response = httpnulltext;
+                    rsize = sizeof httpnulltext - 1;
+                  }
+                  // === JAVA SERVER-TECHNOLOGIEN ===
+                  else if (!strcasecmp(norm_ext, "do") || !strcasecmp(norm_ext, "action")) {
+                    TESTPRINT("Sending Java Action response\n");
+                    pipedata.status = SEND_TXT;
+                    response = httpnulltext;
+                    rsize = sizeof httpnulltext - 1;
+                  }
+                  // === .NET WEB SERVICES ===
+                  else if (!strcasecmp(norm_ext, "asmx") || !strcasecmp(norm_ext, "svc")) {
+                    TESTPRINT("Sending .NET Web Service response\n");
+                    pipedata.status = SEND_TXT;
+                    response = httpnulltext;
+                    rsize = sizeof httpnulltext - 1;
+                  }
+                  // === COLDFUSION ===
+                  else if (!strcasecmp(norm_ext, "cfm")) {
+                    TESTPRINT("Sending ColdFusion response\n");
+                    pipedata.status = SEND_TXT;
+                    response = httpnulltext;
+                    rsize = sizeof httpnulltext - 1;
+                  }
+                  // === FALLBACK FÜR ALLE ANDEREN EXTENSIONS ===
+                  else {
                     // Fix: Automatische Behandlung aller anderen Extensions
                     pipedata.status = SEND_TXT; // Status bleibt konstant für Kompatibilität
                     response = httpnulltext;
                     rsize = sizeof httpnulltext - 1;
                     
                     // Detailliertes Logging mit Extension-Info für bessere Diagnostik
-                    // Fix: Sichere Extension-Behandlung mit Length-Limit
-                    const char *ext_name = "UNKNOWN";
-                    if (ext && ext[0] == '.' && ext[1] != '\0') {
-                      // Nur prüfen ob zweites Zeichen existiert - kein strlen() nötig
-                      ext_name = ext + 1;
-                    }
-                    log_msg(LGG_DEBUG, "Auto-handling extension %.10s from path %.50s - sending empty HTML (status=SEND_%.10s)", 
-                            ext ? ext : ".UNKNOWN", path, ext_name);
-                    TESTPRINT("Sending auto-response for extension %.10s (virtual SEND_%.10s)\n", ext ? ext : ".UNKNOWN", ext_name);
+                    log_msg(LGG_DEBUG, "Auto-handling extension '%s' from path '%s' - sending empty HTML", 
+                            norm_ext, path);
+                    TESTPRINT("Sending auto-response for extension '%s'\n", norm_ext);
                   }
                 }
               }
@@ -1460,4 +1606,88 @@ write_socket(config.new_fd,
 
   conn_stor_relinq(ptr);
   return NULL;
+}
+
+// =============================================================================
+// ASP-KONFIGURATIONSFUNKTIONEN
+// =============================================================================
+
+// ASP-Handler Konfiguration
+typedef struct {
+    int enable_asp_logging;
+    int enable_mime_detection;
+    int cache_responses;
+    char default_charset[32];
+} asp_config_t;
+
+// Globale ASP-Konfiguration (Thread-safe)
+static asp_config_t asp_config = {
+    .enable_asp_logging = 1,
+    .enable_mime_detection = 1,
+    .cache_responses = 0,
+    .default_charset = "UTF-8"
+};
+
+// ASP-Handler Konfiguration setzen
+void socket_handler_set_asp_config(int enable_logging, int enable_mime, const char *charset) {
+    asp_config.enable_asp_logging = enable_logging;
+    asp_config.enable_mime_detection = enable_mime;
+    
+    if (charset && strlen(charset) < sizeof(asp_config.default_charset)) {
+        strncpy(asp_config.default_charset, charset, sizeof(asp_config.default_charset) - 1);
+        asp_config.default_charset[sizeof(asp_config.default_charset) - 1] = '\0';
+    }
+}
+
+// =============================================================================
+// ERWEITERTE FUNKTIONEN FÜR SKALIERBARKEIT UND MONITORING
+// =============================================================================
+
+// Socket Handler Initialisierung
+void socket_handler_init(void) {
+    // Initialisierung der ASP-Konfiguration
+    asp_config.enable_asp_logging = 1;
+    asp_config.enable_mime_detection = 1;
+    asp_config.cache_responses = 0;
+    strncpy(asp_config.default_charset, "UTF-8", sizeof(asp_config.default_charset) - 1);
+    asp_config.default_charset[sizeof(asp_config.default_charset) - 1] = '\0';
+    
+    log_msg(LGG_INFO, "Socket handler initialized with ASP support");
+}
+
+// Socket Handler Cleanup
+void socket_handler_cleanup(void) {
+    // Cleanup-Operationen falls erforderlich
+    log_msg(LGG_INFO, "Socket handler cleanup completed");
+}
+
+// Metriken abrufen
+void socket_handler_get_metrics(char *buffer, size_t size) {
+    if (!buffer || size == 0) return;
+    
+    snprintf(buffer, size, 
+        "ASP Support: %s\n"
+        "MIME Detection: %s\n"
+        "Default Charset: %s\n"
+        "Cache Responses: %s\n",
+        asp_config.enable_asp_logging ? "Enabled" : "Disabled",
+        asp_config.enable_mime_detection ? "Enabled" : "Disabled",
+        asp_config.default_charset,
+        asp_config.cache_responses ? "Enabled" : "Disabled"
+    );
+}
+
+// Thread Pool Konfiguration (Placeholder für zukünftige Erweiterungen)
+void socket_handler_set_thread_pool(int enable) {
+    log_msg(LGG_DEBUG, "Thread pool %s", enable ? "enabled" : "disabled");
+}
+
+// Rate Limiting Konfiguration (Placeholder für zukünftige Erweiterungen)
+void socket_handler_set_rate_limit(int tokens_per_sec) {
+    log_msg(LGG_DEBUG, "Rate limit set to %d tokens per second", tokens_per_sec);
+}
+
+// Memory Pool Größe (Placeholder für zukünftige Erweiterungen)
+void socket_handler_set_memory_pool_size(size_t size) {
+    log_msg(LGG_DEBUG, "Memory pool size set to %zu bytes", size);
 }

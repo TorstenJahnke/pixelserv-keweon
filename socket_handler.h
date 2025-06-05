@@ -49,6 +49,13 @@ typedef enum {
   SEND_BIN,
   SEND_CSS,
   SEND_HTML,
+  /* ASP/Server-side script support */
+  SEND_ASP,
+  SEND_ASPX,
+  SEND_ASHX,
+  SEND_PHP,
+  SEND_JSP,
+  SEND_JS,
   /* Special actions */
   ACTION_LOG_VERB,
   ACTION_DEC_KCC
@@ -80,5 +87,8 @@ void socket_handler_get_metrics(char *buffer, size_t size);
 void socket_handler_set_thread_pool(int enable);
 void socket_handler_set_rate_limit(int tokens_per_sec);
 void socket_handler_set_memory_pool_size(size_t size);
+
+/* ASP/Server-side script configuration */
+void socket_handler_set_asp_config(int enable_logging, int enable_mime, const char *charset);
 
 #endif /* SOCKET_HANDLER_H */

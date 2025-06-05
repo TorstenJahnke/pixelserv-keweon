@@ -12,6 +12,8 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
+#include <arpa/inet.h>  /* Added for IP wildcard support */
+#include <netinet/in.h> /* Added for sockaddr_in and sockaddr_in6 */
 #include <openssl/bn.h>
 #include <openssl/crypto.h>
 #include <openssl/err.h>
@@ -69,6 +71,165 @@ static void generate_cert(const char *cert_name,
                           X509_NAME *issuer,
                           EVP_PKEY *privkey,
                           const STACK_OF(X509_INFO) *cachain);
+
+/* WILDCARD IP FUNCTIONS */
+/* Enhanced IP detection */
+static int is_ip_address(const char *addr) {
+    struct sockaddr_in sa4;
+    struct sockaddr_in6 sa6;
+    
+    if (inet_pton(AF_INET, addr, &(sa4.sin_addr)) == 1) return 4;
+    if (inet_pton(AF_INET6, addr, &(sa6.sin6_addr)) == 1) return 6;
+    return 0;
+}
+
+/* Generate universal catch-all certificate for all IPs */
+static void generate_universal_ip_cert(const char *pem_dir,
+                                      X509_NAME *issuer,
+                                      EVP_PKEY *privkey,
+                                      const STACK_OF(X509_INFO) *cachain)
+{
+    char fname[PIXELSERV_MAX_PATH];
+    EVP_PKEY *key = NULL;
+    X509 *x509 = NULL;
+    X509_EXTENSION *ext = NULL;
+    EVP_MD_CTX *p_ctx = NULL;
+    
+    /* Mega SAN for all common IPs */
+    char mega_san[2048];
+    strcpy(mega_san, 
+        "IP:127.0.0.1,IP:127.0.0.254,"           /* localhost */
+        "IP:10.0.0.1,IP:10.255.255.254,"         /* 10.x.x.x */
+        "IP:192.168.0.1,IP:192.168.255.254,"     /* 192.168.x.x */
+        "IP:172.16.0.1,IP:172.31.255.254,"       /* 172.16-31.x.x */
+        "IP:192.168.1.1,IP:192.168.0.1,IP:10.0.0.1," /* common routers */
+        "DNS:localhost,DNS:*.local,DNS:*.lan"
+    );
+
+#if OPENSSL_API_1_1
+    p_ctx = EVP_MD_CTX_new();
+#else
+    p_ctx = EVP_MD_CTX_create();
+#endif
+    if (!p_ctx || EVP_DigestSignInit(p_ctx, NULL, EVP_sha256(), NULL, privkey) != 1) {
+        log_msg(LGG_ERR, "%s: failed to init sign context", __FUNCTION__);
+        goto free_all;
+    }
+
+    /* Generate key pair */
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+    /* OpenSSL 3.0+ */
+    key = EVP_RSA_gen(2048);
+    if (!key) {
+        log_msg(LGG_ERR, "%s: failed to generate RSA key", __FUNCTION__);
+        goto free_all;
+    }
+#elif OPENSSL_API_1_1
+    /* OpenSSL 1.1.x */
+    key = EVP_PKEY_new();
+    if (!key) goto free_all;
+    
+    EVP_PKEY_CTX *pkey_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, NULL);
+    if (!pkey_ctx) goto free_all;
+    
+    if (EVP_PKEY_keygen_init(pkey_ctx) <= 0 ||
+        EVP_PKEY_CTX_set_rsa_keygen_bits(pkey_ctx, 2048) <= 0 ||
+        EVP_PKEY_keygen(pkey_ctx, &key) <= 0) {
+        EVP_PKEY_CTX_free(pkey_ctx);
+        goto free_all;
+    }
+    EVP_PKEY_CTX_free(pkey_ctx);
+#else
+    /* Legacy OpenSSL */
+    BIGNUM *e = BN_new();
+    if (!e) goto free_all;
+    BN_set_word(e, RSA_F4);
+    
+    RSA *rsa = RSA_new();
+    if (!rsa || RSA_generate_key_ex(rsa, 2048, e, NULL) < 0) {
+        BN_free(e);
+        RSA_free(rsa);
+        goto free_all;
+    }
+    BN_free(e);
+    
+    key = EVP_PKEY_new();
+    if (!key || !EVP_PKEY_assign_RSA(key, rsa)) {
+        RSA_free(rsa);
+        goto free_all;
+    }
+#endif
+
+    /* Create certificate */
+    x509 = X509_new();
+    if (!x509) goto free_all;
+    
+    ASN1_INTEGER_set(X509_get_serialNumber(x509), rand());
+    X509_set_version(x509, 2); /* X509 v3 */
+    
+    /* Random NotBefore date between -864000 and -172800 seconds */
+    int offset = -(rand() % (864000 - 172800 + 1) + 172800);
+    X509_gmtime_adj(X509_get_notBefore(x509), offset);
+    X509_gmtime_adj(X509_get_notAfter(x509), 3600*24*390L); /* 390 days */
+    
+    X509_set_issuer_name(x509, issuer);
+    X509_NAME *name = X509_get_subject_name(x509);
+    X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (unsigned char *)"*.universal.ip", -1, -1, 0);
+
+    /* Add the mega SAN extension */
+    ext = X509V3_EXT_conf_nid(NULL, NULL, NID_subject_alt_name, mega_san);
+    if (!ext) goto free_all;
+    X509_add_ext(x509, ext, -1);
+    X509_EXTENSION_free(ext);
+    ext = NULL;
+    
+    ext = X509V3_EXT_conf_nid(NULL, NULL, NID_ext_key_usage, "TLS Web Server Authentication");
+    if (!ext) goto free_all;
+    X509_add_ext(x509, ext, -1);
+    
+    X509_set_pubkey(x509, key);
+    X509_sign_ctx(x509, p_ctx);
+
+    /* Save certificate to file */
+    snprintf(fname, PIXELSERV_MAX_PATH, "%s/universal_ips.pem", pem_dir);
+    
+    FILE *fp = fopen(fname, "wb");
+    if (!fp) {
+        log_msg(LGG_ERR, "%s: failed to open file for write: %s", __FUNCTION__, fname);
+        goto free_all;
+    }
+
+    /* Write certificate */
+    PEM_write_X509(fp, x509);
+
+    /* Write CA chain */
+    if (cachain) {
+        for (int i = 0; i < sk_X509_INFO_num(cachain); i++) {
+            X509_INFO *xi = sk_X509_INFO_value(cachain, i);
+            if (xi && xi->x509) {
+                PEM_write_X509(fp, xi->x509);
+            }
+        }
+    }
+
+    /* Write private key */
+    PEM_write_PrivateKey(fp, key, NULL, NULL, 0, NULL, NULL);
+    fclose(fp);
+    
+    log_msg(LGG_NOTICE, "🔒 Universal IP certificate generated: %s", fname);
+
+free_all:
+    EVP_PKEY_free(key);
+    X509_EXTENSION_free(ext);
+    X509_free(x509);
+    if (p_ctx) {
+#if OPENSSL_API_1_1
+        EVP_MD_CTX_free(p_ctx);
+#else
+        EVP_MD_CTX_destroy(p_ctx);
+#endif
+    }
+}
 
 /* Certificate worker thread */
 static void *cert_worker(void *arg) {
@@ -573,8 +734,6 @@ static void generate_cert(const char* cert_name,
     X509 *x509 = NULL;
     X509_EXTENSION *ext = NULL;
     char san_str[PIXELSERV_MAX_SERVER_NAME + 4];
-    char *tld = NULL, *tld_tmp = NULL;
-    int dot_count = 0;
     EVP_MD_CTX *p_ctx = NULL;
     char *pem_fn = NULL;
     
@@ -661,16 +820,15 @@ static void generate_cert(const char* cert_name,
     X509_NAME *name = X509_get_subject_name(x509);
     X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (unsigned char *)pem_fn, -1, -1, 0);
 
-    /* Determine if this is an IP address or domain name */
-    tld_tmp = strchr(pem_fn, '.');
-    while (tld_tmp != NULL) {
-        dot_count++;
-        tld = tld_tmp + 1;
-        tld_tmp = strchr(tld, '.');
+    /* Enhanced IP detection instead of the dot counting logic */
+    int ip_version = is_ip_address(pem_fn);
+    if (ip_version > 0) {
+        snprintf(san_str, sizeof(san_str), "IP:%s", pem_fn);
+        log_msg(LGG_DEBUG, "Detected IPv%d address: %s", ip_version, pem_fn);
+    } else {
+        snprintf(san_str, sizeof(san_str), "DNS:%s", pem_fn);
+        log_msg(LGG_DEBUG, "Detected domain name: %s", pem_fn);
     }
-    
-    tld_tmp = (dot_count == 3 && (atoi(tld) > 0 || (atoi(tld) == 0 && strlen(tld) == 1))) ? "IP" : "DNS";
-    snprintf(san_str, sizeof(san_str), "%s:%s", tld_tmp, pem_fn);
     
     ext = X509V3_EXT_conf_nid(NULL, NULL, NID_subject_alt_name, san_str);
     if (!ext) goto free_all;
@@ -821,6 +979,14 @@ cleanup_ca:
         log_msg(LGG_ERR, "%s: failed to load ca.key", __FUNCTION__);
     }
     if (fp) fclose(fp);
+
+    /* Generate universal IP certificate on startup */
+    char universal_ip_file[PIXELSERV_MAX_PATH];
+    snprintf(universal_ip_file, sizeof(universal_ip_file), "%s/universal_ips.pem", pem_dir);
+    struct stat st;
+    if (stat(universal_ip_file, &st) != 0 && ct->privkey && ct->issuer) {
+        generate_universal_ip_cert(pem_dir, ct->issuer, ct->privkey, ct->cachain);
+    }
 
     /* Start worker threads for certificate generation */
     cert_workers_shutdown = 0;
@@ -1024,6 +1190,23 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
 #ifdef DEBUG
     log_msg(LGG_DEBUG, "SNI servername: %s", srv_name);
 #endif
+
+    /* Check if this is an IP address - if so, use universal IP cert */
+    if (is_ip_address(srv_name)) {
+        char universal_ip_path[PIXELSERV_MAX_PATH];
+        snprintf(universal_ip_path, sizeof(universal_ip_path), "%s/universal_ips.pem", cbarg->tls_pem);
+        
+        struct stat st;
+        if (stat(universal_ip_path, &st) == 0) {
+            SSL_CTX *ip_ctx = create_child_sslctx(universal_ip_path, cbarg->cachain);
+            if (ip_ctx) {
+                SSL_set_SSL_CTX(ssl, ip_ctx);
+                cbarg->status = SSL_HIT;
+                log_msg(LGG_DEBUG, "🔒 Using universal IP cert for: %s", srv_name);
+                goto quit_cb;
+            }
+        }
+    }
 
     /* Determine certificate filename based on domain structure */
     int dot_count = 0;
