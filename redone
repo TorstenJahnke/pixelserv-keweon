@@ -1,10 +1,6 @@
 /*
-* pixelserv.c
-* Location: ./pixelserv.c
-* 
-* a small mod to public domain server.c -- a stream socket server demo
-* from http://beej.us/guide/bgnet/
-* single pixel http string from http://proxytunnel.sourceforge.net/pixelserv.php
+* SSLGateNX.c
+* Location: ./SSLGateNX.c
 */
 
 #include <fcntl.h>
@@ -251,8 +247,8 @@ int main (int argc, char* argv[])
   }
 
   if (error) {
-    printf("pixelserv-tls %s (compiled: " __DATE__ " " __TIME__ FEATURE_FLAGS ")\n"
-           "Usage: pixelserv-tls [OPTION]" "\n"
+    printf("SSLGateNX %s (compiled: " __DATE__ " " __TIME__ FEATURE_FLAGS ")\n"
+           "Usage: SSLGateNX [OPTION]" "\n"
            "options:" "\n"
            "\t" "ip_addr/hostname\t(default: 0.0.0.0)" "\n"
            "\t" "-2\t\t\t(disable HTTP 204 reply to generate_204 URLs)" "\n"
@@ -295,7 +291,7 @@ int main (int argc, char* argv[])
   }
 #endif
 
-  openlog("pixelserv-tls",
+  openlog("SSLGateNX",
 #ifdef DEBUG
     LOG_PERROR |
 #endif
@@ -348,8 +344,8 @@ int main (int argc, char* argv[])
     system_shutdown_log();
     exit(EXIT_FAILURE);
   }
-  if (chown(pixel_cert_pipe, pw->pw_uid, pw->pw_gid) < 0) {
-    log_msg(LGG_CRIT, "chown failed to set owner of %s to %s", pixel_cert_pipe, user);
+  if (chown(ssl_gate_pipe, pw->pw_uid, pw->pw_gid) < 0) {
+    log_msg(LGG_CRIT, "chown failed to set owner of %s to %s", ssl_gate_pipe, user);
     system_shutdown_log();
     exit(EXIT_FAILURE);
   }
@@ -382,7 +378,7 @@ quit_main:
 * connection_loop.c
 * Location: ./src/main/connection_loop.c
 * 
-* Main connection loop with select() and accept() for pixelserv-tls
+* Main connection loop with select() and accept() for SSLGateNX
 */
 
 #include <sys/socket.h>
@@ -921,7 +917,7 @@ start_service_thread:
 * server_init.c
 * Location: ./src/main/server_init.c
 * 
-* Server initialization and SSL setup for pixelserv-tls
+* Server initialization and SSL setup for SSLGateNX
 */
 
 #include <pthread.h>
@@ -946,7 +942,7 @@ start_service_thread:
 #define PAGE_SIZE 4096
 #define THREAD_STACK_SIZE  9*PAGE_SIZE
 
-extern char pixel_cert_pipe[];
+extern char ssl_gate_pipe[];
 extern cert_tlstor_t cert_tlstor;
 
 int initialize_server(const char *tls_pem, int cert_cache_size, int max_num_threads, 
@@ -954,8 +950,8 @@ int initialize_server(const char *tls_pem, int cert_cache_size, int max_num_thre
                      pthread_t *certgen_thread)
 {
   /* Generate random pipe path */
-  generate_random_pipe_path(pixel_cert_pipe, sizeof(pixel_cert_pipe));
-  if (mkfifo(pixel_cert_pipe, 0600) < 0 && errno != EEXIST) {
+  generate_random_pipe_path(ssl_gate_pipe, sizeof(ssl_gate_pipe));
+  if (mkfifo(ssl_gate_pipe, 0600) < 0 && errno != EEXIST) {
     log_msg(LGG_ERR, "Failed to create cert pipe: %s", strerror(errno));
     return -1;
   }
@@ -1003,7 +999,7 @@ void cleanup_server(void)
  * src/main/signal_handler.c
  * Location: ./src/main/signal_handler.c
  * 
- * Signal handling functionality for pixelserv-tls
+ * Signal handling functionality for SSLGateNX
 */
 
 #include <signal.h>
@@ -1023,7 +1019,7 @@ void cleanup_server(void)
 #include "../util/util.h"
 #include "signal_handler.h"
 
-extern char pixel_cert_pipe[];
+extern char ssl_gate_pipe[];
 extern const char *tls_pem;
 
 /* Signal handler with improved cleanup */
@@ -1052,10 +1048,10 @@ void signal_handler(int sig)
     conn_stor_flush();
     
     /* Remove certificate pipe */
-    if (unlink(pixel_cert_pipe) == 0) {
-        log_msg(LGG_NOTICE, "Removed cert pipe: %s", pixel_cert_pipe);
+    if (unlink(ssl_gate_pipe) == 0) {
+        log_msg(LGG_NOTICE, "Removed cert pipe: %s", ssl_gate_pipe);
     } else {
-        log_msg(LGG_WARNING, "Could not remove cert pipe %s: %s", pixel_cert_pipe, strerror(errno));
+        log_msg(LGG_WARNING, "Could not remove cert pipe %s: %s", ssl_gate_pipe, strerror(errno));
     }
 
 #if defined(__GLIBC__) && !defined(__UCLIBC__)
@@ -2103,7 +2099,7 @@ const char httpstats2[] =
   "\r\n";
 // split here because we care about the length of what follows
 const char httpstats3[] =
-  "<!DOCTYPE html><html><head><link rel='icon' href='/favicon.ico' type='image/x-icon'/><meta name='viewport' content='width=device-width'><title>pixelserv statistics</title><style>body {font-family:monospace;} table {min-width: 75%; border-collapse: collapse;} th { height:18px; } td {border: 1px solid #e0e0e0; background-color: #f9f9f9;} td:first-child {width: 7%;} td:nth-child(2) {width: 15%; background-color: #ebebeb; border: 1px solid #f9f9f9;}</style></head><body>";
+  "<!DOCTYPE html><html><head><link rel='icon' href='/favicon.ico' type='image/x-icon'/><meta name='viewport' content='width=device-width'><title>SSLGateNX statistics</title><style>body {font-family:monospace;} table {min-width: 75%; border-collapse: collapse;} th { height:18px; } td {border: 1px solid #e0e0e0; background-color: #f9f9f9;} td:first-child {width: 7%;} td:nth-child(2) {width: 15%; background-color: #ebebeb; border: 1px solid #f9f9f9;}</style></head><body>";
 // stats text goes between these two strings
 const char httpstats4[] =
   "</body></html>\r\n";
@@ -2826,17 +2822,17 @@ static int cmp_sslctx_certname(const void *k, const void *p)
 void sslctx_tbl_load(const char* pem_dir, const STACK_OF(X509_INFO) *cachain)
 {
     char *fname = NULL, *line = NULL;
-    size_t line_len = PIXELSERV_MAX_PATH;
+    size_t line_len = SSLGATENX_MAX_PATH;
     FILE *fp = NULL;
     
-    if (!(line = malloc(line_len)) || !(fname = malloc(PIXELSERV_MAX_PATH))) {
+    if (!(line = malloc(line_len)) || !(fname = malloc(SSLGATENX_MAX_PATH))) {
 #ifdef DEBUG
         log_msg(LGG_ERR, "%s: failed to allocate memory", __FUNCTION__);
 #endif
         goto quit_load;
     }
 
-    snprintf(fname, PIXELSERV_MAX_PATH, "%s/prefetch", pem_dir);
+    snprintf(fname, SSLGATENX_MAX_PATH, "%s/prefetch", pem_dir);
     if (!(fp = fopen(fname, "r"))) {
 #ifdef DEBUG
         log_msg(LGG_WARNING, "%s: %s doesn't exist.", __FUNCTION__, fname);
@@ -2848,7 +2844,7 @@ void sslctx_tbl_load(const char* pem_dir, const STACK_OF(X509_INFO) *cachain)
         char *cert_name = strtok(line, " \n\t");
         if (!cert_name) continue;
         
-        snprintf(fname, PIXELSERV_MAX_PATH, "%s/%s", pem_dir, cert_name);
+        snprintf(fname, SSLGATENX_MAX_PATH, "%s/%s", pem_dir, cert_name);
 
         SSL_CTX *sslctx = create_child_sslctx(fname, cachain);
         if (sslctx) {
@@ -2880,14 +2876,14 @@ void sslctx_tbl_save(const char* pem_dir)
     char *fname = NULL;
     FILE *fp = NULL;
 
-    if (!(fname = malloc(PIXELSERV_MAX_PATH))) {
+    if (!(fname = malloc(SSLGATENX_MAX_PATH))) {
 #ifdef DEBUG
         log_msg(LGG_ERR, "%s: failed to allocate memory", __FUNCTION__);
 #endif
         return;
     }
     
-    snprintf(fname, PIXELSERV_MAX_PATH, "%s/prefetch", pem_dir);
+    snprintf(fname, SSLGATENX_MAX_PATH, "%s/prefetch", pem_dir);
     if (!(fp = fopen(fname, "w"))) {
 #ifdef DEBUG
         log_msg(LGG_ERR, "%s: failed to open %s", __FUNCTION__, fname);
@@ -2937,19 +2933,19 @@ void sslctx_tbl_unlock(int idx)
 
 int sslctx_tbl_check_and_flush(void)
 {
-    int pixel_now = process_uptime();
+    int ssl_gate_now = process_uptime();
 #ifdef DEBUG
-    log_msg(LGG_DEBUG, "%s: now %d last_flush %d", __FUNCTION__, pixel_now, sslctx_tbl_last_flush);
+    log_msg(LGG_DEBUG, "%s: now %d last_flush %d", __FUNCTION__, ssl_gate_now, sslctx_tbl_last_flush);
 #endif
 
     /* flush at most every half of session timeout */
-    int do_flush = pixel_now - sslctx_tbl_last_flush - PIXEL_SSL_SESS_TIMEOUT / 2;
+    int do_flush = ssl_gate_now - sslctx_tbl_last_flush - SSLGATE_SSL_SESS_TIMEOUT / 2;
     if (do_flush < 0) {
         return -1;
     }
     
     SSL_CTX_flush_sessions(g_sslctx, time(NULL));
-    sslctx_tbl_last_flush = pixel_now;
+    sslctx_tbl_last_flush = ssl_gate_now;
     return 1;
 }
 
@@ -3004,7 +3000,7 @@ static int sslctx_tbl_insert(const char *cert_name, SSL_CTX *sslctx, int ins_idx
     
     sslctx_tbl_cnt_miss++;
 
-    unsigned int pixel_now = process_uptime();
+    unsigned int ssl_gate_now = process_uptime();
     int len = strlen(cert_name);
     char *str = SSLCTX_TBL_get(ins_idx, cert_name);
     
@@ -3021,7 +3017,7 @@ static int sslctx_tbl_insert(const char *cert_name, SSL_CTX *sslctx, int ins_idx
     
     strncpy(str, cert_name, len + 1);
     SSLCTX_TBL_set(ins_idx, cert_name, str);
-    SSLCTX_TBL_set(ins_idx, last_use, pixel_now);
+    SSLCTX_TBL_set(ins_idx, last_use, ssl_gate_now);
     SSLCTX_TBL_set(ins_idx, reuse_count, 0);
     
     if (ins_idx == sslctx_tbl_end && sslctx_tbl_end < sslctx_tbl_size) {
@@ -3096,8 +3092,8 @@ void enqueue_cert_job(const char *cert_name) {
         return;
     }
     
-    strncpy(job->cert_name, cert_name, PIXELSERV_MAX_SERVER_NAME);
-    job->cert_name[PIXELSERV_MAX_SERVER_NAME] = '\0';
+    strncpy(job->cert_name, cert_name, SSLGATENX_MAX_SERVER_NAME);
+    job->cert_name[SSLGATENX_MAX_SERVER_NAME] = '\0';
     job->next = NULL;
     
     pthread_mutex_lock(&cert_q_lock);
@@ -3338,7 +3334,7 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
 #endif
     int rv = CB_OK;
     tlsext_cb_arg_struct *cbarg = (tlsext_cb_arg_struct *)arg;
-    char full_pem_path[PIXELSERV_MAX_PATH + 2];
+    char full_pem_path[SSLGATENX_MAX_PATH + 2];
     int len;
 
     if (!cbarg || !cbarg->tls_pem) {
@@ -3350,7 +3346,7 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
     }
 
     len = strlen(cbarg->tls_pem);
-    if (len >= PIXELSERV_MAX_PATH) {
+    if (len >= SSLGATENX_MAX_PATH) {
 #ifdef DEBUG
         log_msg(LGG_ERR, "%s: path too long", __FUNCTION__);
 #endif
@@ -3358,7 +3354,7 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
         goto quit_cb;
     }
     
-    strncpy(full_pem_path, cbarg->tls_pem, PIXELSERV_MAX_PATH);
+    strncpy(full_pem_path, cbarg->tls_pem, SSLGATENX_MAX_PATH);
     full_pem_path[len++] = '/';
     full_pem_path[len] = '\0';
 
@@ -3397,7 +3393,7 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
 
     /* Check if this is an IP address - if so, use universal IP cert */
     if (is_ip_address(srv_name)) {
-        char universal_ip_path[PIXELSERV_MAX_PATH];
+        char universal_ip_path[SSLGATENX_MAX_PATH];
         snprintf(universal_ip_path, sizeof(universal_ip_path), "%s/universal_ips.pem", cbarg->tls_pem);
         
         struct stat st;
@@ -3429,15 +3425,15 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
         (dot_count == 2 && strlen(tld) == 2) || 
         (dot_count == 3 && atoi(tld) > 0)) {
         pem_file = srv_name;
-        strncat(full_pem_path, srv_name, PIXELSERV_MAX_PATH - len);
+        strncat(full_pem_path, srv_name, SSLGATENX_MAX_PATH - len);
         len += strlen(srv_name);
     } else {
         pem_file = full_pem_path + strlen(full_pem_path);
-        strncat(full_pem_path, "_", PIXELSERV_MAX_PATH - len);
+        strncat(full_pem_path, "_", SSLGATENX_MAX_PATH - len);
         len += 1;
         const char *wildcard_domain = strchr(srv_name, '.');
         if (wildcard_domain) {
-            strncat(full_pem_path, wildcard_domain, PIXELSERV_MAX_PATH - len);
+            strncat(full_pem_path, wildcard_domain, SSLGATENX_MAX_PATH - len);
             len += strlen(wildcard_domain);
         }
     }
@@ -3446,7 +3442,7 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
     log_msg(LGG_DEBUG, "PEM filename: %s", full_pem_path);
 #endif
 
-    if (len > PIXELSERV_MAX_PATH) {
+    if (len > SSLGATENX_MAX_PATH) {
 #ifdef DEBUG
         log_msg(LGG_ERR, "%s: buffer overflow. %s", __FUNCTION__, full_pem_path);
 #endif
@@ -3594,11 +3590,11 @@ SSL_CTX* create_child_sslctx(const char* full_pem_path, const STACK_OF(X509_INFO
 
     /* Session cache settings */
     SSL_CTX_set_session_cache_mode(sslctx, SSL_SESS_CACHE_NO_AUTO_CLEAR | SSL_SESS_CACHE_SERVER);
-    SSL_CTX_set_timeout(sslctx, PIXEL_SSL_SESS_TIMEOUT);
+    SSL_CTX_set_timeout(sslctx, SSLGATE_SSL_SESS_TIMEOUT);
     SSL_CTX_sess_set_cache_size(sslctx, 1);
 
     /* Set cipher lists */
-    if (SSL_CTX_set_cipher_list(sslctx, PIXELSERV_CIPHER_LIST) <= 0) {
+    if (SSL_CTX_set_cipher_list(sslctx, SSLGATENX_CIPHER_LIST) <= 0) {
 #ifdef DEBUG
         log_msg(LGG_DEBUG, "%s: failed to set cipher list", __FUNCTION__);
 #endif
@@ -3607,7 +3603,7 @@ SSL_CTX* create_child_sslctx(const char* full_pem_path, const STACK_OF(X509_INFO
 #ifdef TLS1_3_VERSION
     SSL_CTX_set_min_proto_version(sslctx, TLS1_VERSION);
     SSL_CTX_set_max_proto_version(sslctx, TLS1_3_VERSION);
-    if (SSL_CTX_set_ciphersuites(sslctx, PIXELSERV_TLSV1_3_CIPHERS) <= 0) {
+    if (SSL_CTX_set_ciphersuites(sslctx, SSLGATENXV1_3_CIPHERS) <= 0) {
 #ifdef DEBUG
         log_msg(LGG_DEBUG, "%s: failed to set TLSv1.3 ciphersuites", __FUNCTION__);
 #endif
@@ -3671,18 +3667,18 @@ SSL_CTX* create_default_sslctx(const char *pem_dir)
 #endif
 
     SSL_CTX_set_options(g_sslctx, options);
-    SSL_CTX_sess_set_cache_size(g_sslctx, PIXEL_SSL_SESS_CACHE_SIZE);
+    SSL_CTX_sess_set_cache_size(g_sslctx, SSLGATE_SSL_SESS_CACHE_SIZE);
     SSL_CTX_set_session_cache_mode(g_sslctx, SSL_SESS_CACHE_SERVER);
-    SSL_CTX_set_timeout(g_sslctx, PIXEL_SSL_SESS_TIMEOUT);
+    SSL_CTX_set_timeout(g_sslctx, SSLGATE_SSL_SESS_TIMEOUT);
 
-    if (SSL_CTX_set_cipher_list(g_sslctx, PIXELSERV_CIPHER_LIST) <= 0) {
+    if (SSL_CTX_set_cipher_list(g_sslctx, SSLGATENX_CIPHER_LIST) <= 0) {
 #ifdef DEBUG
         log_msg(LGG_DEBUG, "cipher_list cannot be set");
 #endif
     }
 
 #ifdef TLS1_3_VERSION
-    SSL_CTX_set_max_early_data(g_sslctx, PIXEL_TLS_EARLYDATA_SIZE);
+    SSL_CTX_set_max_early_data(g_sslctx, SSLGATE_TLS_EARLYDATA_SIZE);
     SSL_CTX_set_client_hello_cb(g_sslctx, tls_clienthello_cb, NULL);
 #else
     SSL_CTX_set_tlsext_servername_callback(g_sslctx, tls_servername_cb);
@@ -3737,8 +3733,8 @@ int is_ssl_conn(int fd, char *srv_ip, int srv_ip_len, const int *ssl_ports, int 
 #ifdef TLS1_3_VERSION
 char* read_tls_early_data(SSL *ssl, int *err)
 {
-    size_t buf_siz = PIXEL_TLS_EARLYDATA_SIZE;
-    char *buf = malloc(PIXEL_TLS_EARLYDATA_SIZE + 1);
+    size_t buf_siz = SSLGATE_TLS_EARLYDATA_SIZE;
+    char *buf = malloc(SSLGATE_TLS_EARLYDATA_SIZE + 1);
     if (!buf) {
 #ifdef DEBUG
         log_msg(LGG_DEBUG, "%s out of memory", __FUNCTION__);
@@ -3945,7 +3941,7 @@ void generate_universal_ip_cert(const char *pem_dir,
                                       EVP_PKEY *privkey,
                                       const STACK_OF(X509_INFO) *cachain)
 {
-    char fname[PIXELSERV_MAX_PATH];
+    char fname[SSLGATENX_MAX_PATH];
     EVP_PKEY *key = NULL;
     X509 *x509 = NULL;
     X509_EXTENSION *ext = NULL;
@@ -4051,7 +4047,7 @@ void generate_universal_ip_cert(const char *pem_dir,
     X509_sign_ctx(x509, p_ctx);
 
     /* Save certificate to file */
-    snprintf(fname, PIXELSERV_MAX_PATH, "%s/universal_ips.pem", pem_dir);
+    snprintf(fname, SSLGATENX_MAX_PATH, "%s/universal_ips.pem", pem_dir);
     
     FILE *fp = fopen(fname, "wb");
     if (!fp) {
@@ -4189,11 +4185,11 @@ void generate_cert(const char* cert_name,
                           EVP_PKEY *privkey,
                           const STACK_OF(X509_INFO) *cachain)
 {
-    char fname[PIXELSERV_MAX_PATH];
+    char fname[SSLGATENX_MAX_PATH];
     EVP_PKEY *key = NULL;
     X509 *x509 = NULL;
     X509_EXTENSION *ext = NULL;
-    char san_str[PIXELSERV_MAX_SERVER_NAME + 4];
+    char san_str[SSLGATENX_MAX_SERVER_NAME + 4];
     EVP_MD_CTX *p_ctx = NULL;
     char *pem_fn = NULL;
     
@@ -4319,7 +4315,7 @@ void generate_cert(const char* cert_name,
 
     /* Save certificate to file */
     if (pem_fn[0] == '*') pem_fn[0] = '_';
-    snprintf(fname, PIXELSERV_MAX_PATH, "%s/%s", pem_dir, pem_fn);
+    snprintf(fname, SSLGATENX_MAX_PATH, "%s/%s", pem_dir, pem_fn);
     
     FILE *fp = fopen(fname, "wb");
     if (!fp) {
@@ -4395,13 +4391,13 @@ quit_cb:
 void cert_tlstor_init(const char *pem_dir, cert_tlstor_t *ct)
 {
     FILE *fp = NULL;
-    char cert_file[PIXELSERV_MAX_PATH];
+    char cert_file[SSLGATENX_MAX_PATH];
     X509 *x509 = NULL;
 
     memset(ct, 0, sizeof(cert_tlstor_t));
     
     /* Load CA certificate */
-    snprintf(cert_file, PIXELSERV_MAX_PATH, "%s/rootCA/ca.crt", pem_dir);
+    snprintf(cert_file, SSLGATENX_MAX_PATH, "%s/rootCA/ca.crt", pem_dir);
     fp = fopen(cert_file, "r");
     x509 = X509_new();
 
@@ -4459,7 +4455,7 @@ cleanup_ca:
     X509_free(x509);
 
     /* Load CA private key */
-    snprintf(cert_file, PIXELSERV_MAX_PATH, "%s/rootCA/ca.key", pem_dir);
+    snprintf(cert_file, SSLGATENX_MAX_PATH, "%s/rootCA/ca.key", pem_dir);
     fp = fopen(cert_file, "r");
     if (!fp || !PEM_read_PrivateKey(fp, &ct->privkey, pem_passwd_cb, (void*)pem_dir)) {
 #ifdef DEBUG
@@ -4469,7 +4465,7 @@ cleanup_ca:
     if (fp) fclose(fp);
 
     /* Generate universal IP certificate on startup */
-    char universal_ip_file[PIXELSERV_MAX_PATH];
+    char universal_ip_file[SSLGATENX_MAX_PATH];
     snprintf(universal_ip_file, sizeof(universal_ip_file), "%s/universal_ips.pem", pem_dir);
     struct stat st;
     if (stat(universal_ip_file, &st) != 0 && ct->privkey && ct->issuer) {
@@ -4510,32 +4506,32 @@ void *cert_generator(void *ptr) {
     int idle = 0;
     cert_tlstor_t *ct = (cert_tlstor_t *) ptr;
 
-    char buf[PIXELSERV_MAX_SERVER_NAME * 4 + 1];
-    char *half_token = buf + PIXELSERV_MAX_SERVER_NAME * 4;
-    buf[PIXELSERV_MAX_SERVER_NAME * 4] = '\0';
+    char buf[SSLGATENX_MAX_SERVER_NAME * 4 + 1];
+    char *half_token = buf + SSLGATENX_MAX_SERVER_NAME * 4;
+    buf[SSLGATENX_MAX_SERVER_NAME * 4] = '\0';
 
-    int fd = open(pixel_cert_pipe, O_RDONLY | O_NONBLOCK);
+    int fd = open(ssl_gate_pipe, O_RDONLY | O_NONBLOCK);
     srand((unsigned int)time(NULL));
 
     while (!cert_workers_shutdown) {
         if (fd == -1) {
 #ifdef DEBUG
-            log_msg(LGG_ERR, "%s: failed to open %s: %s", __FUNCTION__, pixel_cert_pipe, strerror(errno));
+            log_msg(LGG_ERR, "%s: failed to open %s: %s", __FUNCTION__, ssl_gate_pipe, strerror(errno));
 #endif
             sleep(1);
-            fd = open(pixel_cert_pipe, O_RDONLY | O_NONBLOCK);
+            fd = open(ssl_gate_pipe, O_RDONLY | O_NONBLOCK);
             continue;
         }
         
         strcpy(buf, half_token);
         struct pollfd pfd = { fd, POLLIN, 0 };
-        int ret = poll(&pfd, 1, 1000 * PIXEL_SSL_SESS_TIMEOUT / 4);
+        int ret = poll(&pfd, 1, 1000 * SSLGATE_SSL_SESS_TIMEOUT / 4);
         
         if (ret <= 0) {
             /* timeout */
             sslctx_tbl_check_and_flush();
             if (kcc == 0) {
-                if (++idle >= (3600 / (PIXEL_SSL_SESS_TIMEOUT / 4))) {
+                if (++idle >= (3600 / (SSLGATE_SSL_SESS_TIMEOUT / 4))) {
                     conn_stor_flush();
                     idle = 0;
                 }
@@ -4546,26 +4542,26 @@ void *cert_generator(void *ptr) {
             continue;
         }
         
-        ssize_t cnt = read(fd, buf + strlen(half_token), PIXELSERV_MAX_SERVER_NAME * 4 - strlen(half_token));
+        ssize_t cnt = read(fd, buf + strlen(half_token), SSLGATENX_MAX_SERVER_NAME * 4 - strlen(half_token));
         if (cnt == 0) {
 #ifdef DEBUG
             log_msg(LGG_DEBUG, "%s: pipe EOF", __FUNCTION__);
 #endif
             close(fd);
-            fd = open(pixel_cert_pipe, O_RDONLY | O_NONBLOCK);
+            fd = open(ssl_gate_pipe, O_RDONLY | O_NONBLOCK);
             continue;
         }
         
         if (cnt < 0) continue;
         
-        if ((size_t)cnt < PIXELSERV_MAX_SERVER_NAME * 4 - strlen(half_token)) {
+        if ((size_t)cnt < SSLGATENX_MAX_SERVER_NAME * 4 - strlen(half_token)) {
             buf[cnt + strlen(half_token)] = '\0';
-            half_token = buf + PIXELSERV_MAX_SERVER_NAME * 4;
+            half_token = buf + SSLGATENX_MAX_SERVER_NAME * 4;
         } else {
             size_t i = 1;
-            for (i = 1; buf[PIXELSERV_MAX_SERVER_NAME * 4 - i] != ':' && i < strlen(buf); i++);
-            half_token = buf + PIXELSERV_MAX_SERVER_NAME * 4 - i + 1;
-            buf[PIXELSERV_MAX_SERVER_NAME * 4 - i + 1] = '\0';
+            for (i = 1; buf[SSLGATENX_MAX_SERVER_NAME * 4 - i] != ':' && i < strlen(buf); i++);
+            half_token = buf + SSLGATENX_MAX_SERVER_NAME * 4 - i + 1;
+            buf[SSLGATENX_MAX_SERVER_NAME * 4 - i + 1] = '\0';
         }
         
         if (!ct->privkey || !ct->issuer) continue;
@@ -4573,9 +4569,9 @@ void *cert_generator(void *ptr) {
         char *p_buf, *p_buf_sav = NULL;
         p_buf = strtok_r(buf, ":", &p_buf_sav);
         while (p_buf != NULL) {
-            char cert_file[PIXELSERV_MAX_PATH];
+            char cert_file[SSLGATENX_MAX_PATH];
             struct stat st;
-            snprintf(cert_file, PIXELSERV_MAX_PATH, "%s/%s", ct->pem_dir, p_buf);
+            snprintf(cert_file, SSLGATENX_MAX_PATH, "%s/%s", ct->pem_dir, p_buf);
             
             if (stat(cert_file, &st) != 0) { /* doesn't exist */
                 enqueue_cert_job(p_buf);
@@ -4608,21 +4604,21 @@ void *cert_generator(void *ptr) {
 #define OPENSSL_API_1_1 0
 #endif
 
-#define PIXEL_SSL_SESS_CACHE_SIZE 128*20
-#define PIXEL_SSL_SESS_TIMEOUT 30 /* seconds - HTTPS Session LÃ¤nge fÃ¼r AdBlock optimiert */
-#define PIXEL_TLS_EARLYDATA_SIZE 16384
+#define SSLGATE_SSL_SESS_CACHE_SIZE 128*20
+#define SSLGATE_SSL_SESS_TIMEOUT 30 /* seconds - HTTPS Session LÃ¤nge fÃ¼r AdBlock optimiert */
+#define SSLGATE_TLS_EARLYDATA_SIZE 16384
 
 #ifndef DEFAULT_PEM_PATH
-#define DEFAULT_PEM_PATH "/opt/var/cache/pixelserv"
+#define DEFAULT_PEM_PATH "/opt/var/cache/SSLGateNX"
 #endif
 
-#define PIXELSERV_MAX_PATH 1024
-#define PIXELSERV_MAX_SERVER_NAME 255
+#define SSLGATENX_MAX_PATH 1024
+#define SSLGATENX_MAX_SERVER_NAME 255
 
-extern char pixel_cert_pipe[PIXELSERV_MAX_PATH];
+extern char ssl_gate_pipe[SSLGATENX_MAX_PATH];
 
 /* Updated cipher lists for modern TLS */
-#define PIXELSERV_CIPHER_LIST \
+#define SSLGATENX_CIPHER_LIST \
   "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:" \
   "ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:" \
   "ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:" \
@@ -4630,7 +4626,7 @@ extern char pixel_cert_pipe[PIXELSERV_MAX_PATH];
   "DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES128-SHA256:" \
   "DHE-RSA-AES128-SHA:AES128-GCM-SHA256:AES128-SHA256:AES128-SHA"
 
-#define PIXELSERV_TLSV1_3_CIPHERS \
+#define SSLGATENXV1_3_CIPHERS \
   "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256"
 
 /* Certificate storage structure */
@@ -4687,7 +4683,7 @@ typedef struct {
 extern SSL_CTX *g_sslctx;
 
 /* External variables from util.h/main */
-extern char pixel_cert_pipe[PIXELSERV_MAX_PATH];
+extern char ssl_gate_pipe[SSLGATENX_MAX_PATH];
 extern volatile sig_atomic_t kcc;
 
 /* Function from util.h */
@@ -4818,7 +4814,7 @@ void print_cert_statistics(void);
 
 /* Job Queue for parallel certificate generation */
 typedef struct cert_job {
-    char cert_name[PIXELSERV_MAX_SERVER_NAME+1];
+    char cert_name[SSLGATENX_MAX_SERVER_NAME+1];
     struct cert_job *next;
 } cert_job_t;
 
@@ -5406,7 +5402,7 @@ void log_xcs(logger_level verb, char *client_ip, char *host, int tls, char *req,
 #include <execinfo.h>
 #endif
 
-char pixel_cert_pipe[PIXELSERV_MAX_PATH];
+char ssl_gate_pipe[SSLGATENX_MAX_PATH];
 
 void generate_random_pipe_path(char *buffer, size_t buflen) {
     const char charset[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -5531,7 +5527,7 @@ char* get_version(int argc, char* argv[]) {
     optbuf = " <none>";
   }
 
-  if (asprintf(&retbuf, "pixelserv-tls %s (compiled: %s" FEATURE_FLAGS ") options:%s",
+  if (asprintf(&retbuf, "SSLGateNX %s (compiled: %s" FEATURE_FLAGS ") options:%s",
           VERSION, __DATE__ " " __TIME__, optbuf) < 1) {
     retbuf = " <asprintf error>";
   }
@@ -5652,7 +5648,7 @@ void print_trace(int sig) {
 #include <openssl/ssl.h>
 
 // preprocessor defines
-#define VERSION "3.0.18.25"
+#define VERSION "1.0.0"
 
 #define BACKLOG SOMAXCONN       // how many pending connections queue will hold
 #define DEFAULT_IP "*"          // default IP address ALL - use this in messages only
@@ -5682,7 +5678,7 @@ void print_trace(int sig) {
 #include <errno.h>
 #include <netdb.h>
 
-extern char pixel_cert_pipe[PIXELSERV_MAX_PATH];
+extern char ssl_gate_pipe[SSLGATENX_MAX_PATH];
 void generate_random_pipe_path(char *buffer, size_t buflen);
 
 /* taken from glibc unistd.h and fixes musl */
@@ -7139,358 +7135,3 @@ unsigned char index_html[] = {};
 unsigned int index_html_len = 0;
 
 #endif // HTML_INDEX_H
-/*
- * debug_system.h - Einfaches Debug-System fÃ¼r pixelserv-tls
- * 
- * Production: Nur "Program gestartet" - sonst NICHTS
- * Debug: VollstÃ¤ndiges Logging wie bisher
- */
-
-#ifndef DEBUG_SYSTEM_H
-#define DEBUG_SYSTEM_H
-
-#include <stdio.h>
-#include <stdarg.h>
-#include <syslog.h>
-
-/* Logger Level Definitionen */
-typedef enum {    
-    LGG_CRIT = 0,
-    LGG_ERR,
-    LGG_WARNING,
-    LGG_NOTICE,
-    LGG_INFO,
-    LGG_DEBUG
-} logger_level;
-
-/* Legacy-KompatibilitÃ¤t fÃ¼r TLS-Konstanten */
-#ifndef TLS1_3_VERSION
-#define TLS1_3_VERSION 0x0304
-#endif
-#ifndef TLS1_2_VERSION  
-#define TLS1_2_VERSION 0x0303
-#endif
-#ifndef TLS1_VERSION
-#define TLS1_VERSION 0x0301
-#endif
-
-/* Log-Konstanten */
-#define MAX_LOG_CHUNK_SIZE 8000
-
-#ifdef DEBUG
-    /* =====================================================================
-     * DEBUG BUILD - VollstÃ¤ndiges Logging aktiv
-     * ===================================================================== */
-    
-    /* Debug-Funktionen - werden implementiert */
-    void debug_log_msg(logger_level level, const char *fmt, ...);
-    void debug_log_xcs(logger_level level, char *client_ip, char *host, 
-                       int tls, char *req, char *body, size_t body_len);
-    void debug_set_verbose_level(logger_level level);
-    logger_level debug_get_verbose_level(void);
-    void debug_system_init(void);
-    void debug_system_cleanup(void);
-    
-    /* Makros fÃ¼r Debug-Build */
-    #define log_msg(level, fmt, ...) debug_log_msg(level, fmt, ##__VA_ARGS__)
-    #define log_xcs(level, ip, host, tls, req, body, len) debug_log_xcs(level, ip, host, tls, req, body, len)
-    #define log_set_verb(level) debug_set_verbose_level(level)
-    #define log_get_verb() debug_get_verbose_level()
-    
-    /* Debug-spezifische Makros */
-    #define DEBUG_PRINT(fmt, ...) printf("[DEBUG] " fmt "\n", ##__VA_ARGS__)
-    #define TIME_CHECK(description) debug_time_check(description)
-    #define HEX_DUMP(data, size) debug_hex_dump(data, size)
-    #define TESTPRINT(fmt, ...) debug_log_msg(LGG_DEBUG, fmt, ##__VA_ARGS__)
-    
-    /* ZusÃ¤tzliche Debug-Funktionen */
-    void debug_time_check(const char *description);
-    void debug_hex_dump(void *data, int size);
-
-#else
-    /* =====================================================================
-     * PRODUCTION BUILD - Ultra-minimal, nur Startup
-     * ===================================================================== */
-    
-    /* Einzige erlaubte Funktion fÃ¼r Production */
-    static inline void production_startup_message(void) {
-        printf("Program gestartet\n");
-        fflush(stdout);
-    }
-    
-    /* Alle Log-Makros werden zu NICHTS - Zero-Cost in Production */
-    #define log_msg(level, fmt, ...)                    /* NICHTS */
-    #define log_xcs(level, ip, host, tls, req, body, len) /* NICHTS */
-    #define log_set_verb(level)                         /* NICHTS */
-    #define log_get_verb() 0                           /* Return 0 */
-    
-    /* Debug-Makros werden zu NICHTS */
-    #define DEBUG_PRINT(fmt, ...)                      /* NICHTS */
-    #define TIME_CHECK(description)                    /* NICHTS */
-    #define HEX_DUMP(data, size)                       /* NICHTS */
-    #define TESTPRINT(fmt, ...)                        /* NICHTS */
-    
-    /* Syslog komplett deaktiviert fÃ¼r Production */
-    #define openlog(...)                               /* NICHTS */
-    #define syslog(...)                                /* NICHTS */
-    #define closelog()                                 /* NICHTS */
-    
-#endif /* DEBUG */
-
-/* =========================================================================
- * SYSTEM STARTUP - Einziger Unterschied zwischen Debug/Production
- * ========================================================================= */
-
-static inline void system_startup_log(void) {
-#ifdef DEBUG
-    debug_system_init();
-    debug_log_msg(LGG_NOTICE, "pixelserv-tls DEBUG build gestartet");
-#else
-    production_startup_message();
-#endif
-}
-
-static inline void system_shutdown_log(void) {
-#ifdef DEBUG
-    debug_log_msg(LGG_NOTICE, "pixelserv-tls DEBUG build beendet");
-    debug_system_cleanup();
-#endif
-    /* Production: Nichts beim Shutdown */
-}
-
-#endif /* DEBUG_SYSTEM_H */
-/*
- * debug_system.c - Debug System Implementation
- * 
- * Diese Datei wird NUR bei DEBUG-Builds kompiliert!
- * Production Builds enthalten diese Datei GAR NICHT.
- */
-
-#ifdef DEBUG
-
-#include "debug_system.h"
-#include <string.h>
-#include <time.h>
-#include <sys/time.h>
-#include <ctype.h>
-#include <stdlib.h>
-
-/* =========================================================================
- * DEBUG STATE
- * ========================================================================= */
-
-static logger_level current_verbose_level = LGG_ERR;
-static struct timespec debug_start_time = {0, 0};
-
-/* =========================================================================
- * HELPER FUNCTIONS
- * ========================================================================= */
-
-static void get_current_time(struct timespec *ts) {
-    clock_gettime(CLOCK_MONOTONIC, ts);
-}
-
-static double time_diff_ms(struct timespec start, struct timespec end) {
-    return (end.tv_sec - start.tv_sec) * 1000.0 + 
-           (end.tv_nsec - start.tv_nsec) / 1000000.0;
-}
-
-static int should_log(logger_level level) {
-    return level <= current_verbose_level;
-}
-
-static int ctrl_char(char *buf, size_t len) {
-    if (strlen(buf) < len)
-        return 1;
-    for (size_t i=0; i<(len - 1); i++) {
-        if (buf[i] >= 10 && buf[i] <= 13)
-            continue;
-        if (buf[i] < 32) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-/* =========================================================================
- * CORE LOGGING FUNCTIONS
- * ========================================================================= */
-
-void debug_log_msg(logger_level level, const char *fmt, ...) {
-    if (!should_log(level)) {
-        return;
-    }
-    
-    va_list args;
-    va_start(args, fmt);
-    
-    /* Syslog fÃ¼r wichtige Nachrichten */
-    vsyslog(LOG_CRIT + level, fmt, args);
-    
-    va_end(args);
-}
-
-void debug_log_xcs(logger_level level, char *client_ip, char *host, int tls, 
-                   char *req, char *body, size_t body_len) {
-    if (!should_log(level) || !client_ip || !host || !req) {
-        return;
-    }
-    
-    /* TLS Version String */
-    const char* tls_ver;
-    switch (tls) {
-        case TLS1_3_VERSION: tls_ver = "1.3"; break;
-        case TLS1_2_VERSION: tls_ver = "1.2"; break;
-        case TLS1_VERSION:   tls_ver = "1.0"; break;
-        case 0:
-        default:
-            tls_ver = "none";
-    }
-
-    /* Request Logging */
-    if (strlen(req) < MAX_LOG_CHUNK_SIZE) {
-        syslog(LOG_CRIT + level, "%s %s %s tls_%s", client_ip, host, req, tls_ver);
-    } else {
-        int num_chunks = strlen(req) / MAX_LOG_CHUNK_SIZE + 1;
-        char store = req[MAX_LOG_CHUNK_SIZE];
-        req[MAX_LOG_CHUNK_SIZE] = '\0';
-        syslog(LOG_CRIT + level, "%s %s %s", client_ip, host, req);
-        req[MAX_LOG_CHUNK_SIZE] = store;
-
-        int chunk = 1;
-        if (num_chunks > 2) {
-            for (; chunk < num_chunks - 1; chunk++) {
-                store = req[MAX_LOG_CHUNK_SIZE * (chunk + 1)];
-                req[MAX_LOG_CHUNK_SIZE * (chunk + 1)] = '\0';
-                syslog(LOG_CRIT + level, "%s", req + MAX_LOG_CHUNK_SIZE * chunk);
-                req[MAX_LOG_CHUNK_SIZE * (chunk + 1)] = store;
-            }
-        }
-        syslog(LOG_CRIT + level, "%s tls_%s", req + MAX_LOG_CHUNK_SIZE * chunk, tls_ver);
-    }
-
-    /* Body Logging falls vorhanden */
-    if (body_len > 0 && body) {
-        if (ctrl_char(body, body_len)) {
-            syslog(LOG_CRIT + level, "[%s]", "-binary POST content not dumped-");
-        } else if (strlen(body) < MAX_LOG_CHUNK_SIZE) {
-            syslog(LOG_CRIT + level, "[%s]", body);
-        } else {
-            int num_chunks = strlen(body) / MAX_LOG_CHUNK_SIZE + 1;
-            char store = body[MAX_LOG_CHUNK_SIZE];
-            body[MAX_LOG_CHUNK_SIZE] = '\0';
-            syslog(LOG_CRIT + level, "[%s", body);
-            body[MAX_LOG_CHUNK_SIZE] = store;
-
-            int chunk = 1;
-            if (num_chunks > 2) {
-                for (; chunk < num_chunks - 1; chunk++) {
-                    store = body[MAX_LOG_CHUNK_SIZE * (chunk + 1)];
-                    body[MAX_LOG_CHUNK_SIZE * (chunk + 1)] = '\0';
-                    syslog(LOG_CRIT + level, "%s", body + MAX_LOG_CHUNK_SIZE * chunk);
-                    body[MAX_LOG_CHUNK_SIZE * (chunk + 1)] = store;
-                }
-            }
-            syslog(LOG_CRIT + level, "%s]", body + MAX_LOG_CHUNK_SIZE * chunk);
-        }
-    }
-}
-
-/* =========================================================================
- * CONFIGURATION FUNCTIONS
- * ========================================================================= */
-
-void debug_set_verbose_level(logger_level level) {
-    if (level >= LGG_CRIT && level <= LGG_DEBUG) {
-        current_verbose_level = level;
-        debug_log_msg(LGG_NOTICE, "Debug verbose level set to %d", level);
-    }
-}
-
-logger_level debug_get_verbose_level(void) {
-    return current_verbose_level;
-}
-
-/* =========================================================================
- * UTILITY FUNCTIONS
- * ========================================================================= */
-
-void debug_time_check(const char *description) {
-    static struct timespec last_time = {0, 0};
-    struct timespec now;
-    get_current_time(&now);
-    
-    if (last_time.tv_sec != 0) {
-        double elapsed = time_diff_ms(last_time, now);
-        debug_log_msg(LGG_DEBUG, "TIME_CHECK [%s]: %.2f ms", description, elapsed);
-    }
-    
-    last_time = now;
-}
-
-void debug_hex_dump(void *data, int size) {
-    if (!should_log(LGG_DEBUG) || !data || size <= 0) {
-        return;
-    }
-    
-    unsigned char *p = (unsigned char*)data;
-    char hex_str[16*3 + 5] = {0};
-    char char_str[16*1 + 5] = {0};
-    
-    debug_log_msg(LGG_DEBUG, "=== HEX DUMP (%d bytes) ===", size);
-    
-    for (int n = 0; n < size; n++) {
-        if (n % 16 == 0 && n > 0) {
-            debug_log_msg(LGG_DEBUG, "[%04x]   %-48s  %s", n - 16, hex_str, char_str);
-            hex_str[0] = '\0';
-            char_str[0] = '\0';
-        }
-        
-        /* Hex Teil */
-        char byte_str[4];
-        snprintf(byte_str, sizeof(byte_str), "%02X ", p[n]);
-        strncat(hex_str, byte_str, sizeof(hex_str) - strlen(hex_str) - 1);
-        
-        /* Char Teil */
-        char char_byte[2];
-        char_byte[0] = isprint(p[n]) ? p[n] : '.';
-        char_byte[1] = '\0';
-        strncat(char_str, char_byte, sizeof(char_str) - strlen(char_str) - 1);
-        
-        /* Spacing bei 8 Bytes */
-        if ((n + 1) % 8 == 0) {
-            strncat(hex_str, " ", sizeof(hex_str) - strlen(hex_str) - 1);
-            strncat(char_str, " ", sizeof(char_str) - strlen(char_str) - 1);
-        }
-    }
-    
-    /* Letzte Zeile */
-    if (strlen(hex_str) > 0) {
-        int remaining = size % 16;
-        debug_log_msg(LGG_DEBUG, "[%04x]   %-48s  %s", 
-                     size - remaining, hex_str, char_str);
-    }
-    
-    debug_log_msg(LGG_DEBUG, "=== END HEX DUMP ===");
-}
-
-/* =========================================================================
- * SYSTEM INITIALIZATION
- * ========================================================================= */
-
-void debug_system_init(void) {
-    get_current_time(&debug_start_time);
-    current_verbose_level = LGG_ERR; /* Default Level */
-    
-    /* Syslog initialisieren */
-    openlog("pixelserv-tls-debug", LOG_PID | LOG_PERROR, LOG_DAEMON);
-    
-    debug_log_msg(LGG_NOTICE, "Debug system initialized");
-}
-
-void debug_system_cleanup(void) {
-    debug_log_msg(LGG_NOTICE, "Debug system cleanup");
-    closelog();
-}
-
-#endif /* DEBUG */
