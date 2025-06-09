@@ -7,6 +7,7 @@
  * - Buffer-Overflow-Schutz
  * - ASP/ASPX/ASHX Unterstützung hinzugefügt
  * - Funktionalität 100% erhalten
+ * - Alle Logging-Aufrufe entfernt
  */
 
 #include "util.h" // _GNU_SOURCE
@@ -343,19 +344,9 @@ static const char httpcacert2[] =
   "\r\n"
   "\r\n";
 
-/* httpfilenotfound entfernt - wird nicht mehr verwendet da keine 404s gesendet werden */
-
-  
-// private functions for socket_handler() use
 #ifdef HEX_DUMP
-// from http://sws.dett.de/mini/hexdump-c/
 static void hex_dump(void *data, int size)
 {
-  /* dumps size bytes of *data to stdout. Looks like:
-   * [0000] 75 6E 6B 6E 6F 77 6E 20   30 FF 00 00 00 00 39 00 unknown 0.....9.
-   * (in a single line of course)
-   */
-
   if (!data || size <= 0) return;
 
   char *p = data;
@@ -366,12 +357,10 @@ static void hex_dump(void *data, int size)
   char hexstr[16*3 + 5] = {0};
   char charstr[16*1 + 5] = {0};
   
-  // High-Load Fix: Thread-safe logging mit flockfile()
   flockfile(stdout);
   
   for (n = 1; n <= size; n++) {
     if (n%16 == 1) {
-      // store address for this line - Fix: sichere Pointer-Arithmetik
       snprintf(addrstr, sizeof addrstr, "%.4x",
          (unsigned int)((uintptr_t)p - (uintptr_t)data) );
     }
@@ -381,30 +370,25 @@ static void hex_dump(void *data, int size)
       c = '.';
     }
 
-    // store hex str (for left side)
     snprintf(bytestr, sizeof bytestr, "%02X ", (unsigned char)*p);
     strncat(hexstr, bytestr, sizeof hexstr - strlen(hexstr) - 1);
 
-    // store char str (for right side)
     snprintf(bytestr, sizeof bytestr, "%c", c);
     strncat(charstr, bytestr, sizeof charstr - strlen(charstr) - 1);
 
     if (n%16 == 0) {
-      // line completed
       printf("[%4.4s]   %-50.50s  %s\n", addrstr, hexstr, charstr);
       hexstr[0] = 0;
       charstr[0] = 0;
     } else if (n%8 == 0) {
-      // half line: add whitespaces
       strncat(hexstr, "  ", sizeof hexstr - strlen(hexstr) - 1);
       strncat(charstr, " ", sizeof charstr - strlen(charstr) - 1);
     }
 
-    p++; // next byte
+    p++;
   }
 
   if (strlen(hexstr) > 0) {
-    // print rest of buffer if not empty
     printf("[%4.4s]   %-50.50s  %s\n", addrstr, hexstr, charstr);
   }
   
@@ -434,8 +418,6 @@ char* strstr_last(const char* const str1, const char* const str2) {
   return 0;
 }
 
-/* strstr behavior undefined if one or more parameter is null.
-   Not portable as MacOS default to crash. */
 char* strstr_first(const char* const str1, const char* const str2) {
   if (!str1) return NULL;
   if (!str2) return (char*)str1;
@@ -467,22 +449,15 @@ void urldecode(char* const decoded, char* const encoded) {
 #ifdef DEBUG
 void child_signal_handler(int sig)
 {
-  if (sig != SIGTERM
-   && sig != SIGUSR2) {
-    log_msg(LGG_DEBUG, "Thread or child process ignoring unsupported signal number: %d", sig);
+  if (sig != SIGTERM && sig != SIGUSR2) {
     return;
   }
 
   if (sig == SIGTERM) {
-    // Ignore this signal while we are quitting
     signal(SIGTERM, SIG_IGN);
   }
 
-  log_msg(LGG_DEBUG, "Thread or child process caught signal %d file %s", sig, __FILE__);
-
   if (sig == SIGTERM) {
-    // exit program on SIGTERM
-    log_msg(LGG_DEBUG, "Thread or child process exit on SIGTERM");
     exit(EXIT_SUCCESS);
   }
 
@@ -495,7 +470,6 @@ void child_signal_handler(int sig)
     double time_msec = 0.0;\
     time_msec = elapsed_time_msec(start_time);\
     if (time_msec > warning_time) {\
-      log_msg(LGG_DEBUG, "Elapsed time %f msec exceeded warning_time=%d msec following operation: %s", time_msec, warning_time, x);\
     }\
   }\
 }
@@ -503,7 +477,6 @@ void child_signal_handler(int sig)
 #define ELAPSED_TIME(op) {\
     double time_msec = 0.0;\
     time_msec = elapsed_time_msec(start_time);\
-    log_msg(LGG_DEBUG, "Elapsed time %f msec following operation: %s", time_msec, op);\
 }
 #else
 #define TIME_CHECK(x,y...)
@@ -534,17 +507,14 @@ redo_ssl_read:
   ret = SSL_read(ssl, (char *)buf, len);
   if (ret <= 0) {
     int sslerr = SSL_get_error(ssl, ret);
-    //log_msg(LGG_CRIT, "%s: ret:%d ssl error:%d", __FUNCTION__, ret, sslerr);
     switch(sslerr) {
       case SSL_ERROR_WANT_READ:
         ssl_attempt--;
         if (ssl_attempt > 0) goto redo_ssl_read;
         break;
       case SSL_ERROR_SSL:
-        //log_msg(LGG_CRIT, "%s: ssl error %d", __FUNCTION__, ERR_peek_last_error());
         break;
       case SSL_ERROR_SYSCALL:
-        //log_msg(LGG_CRIT, "%s: errno:%d", __FUNCTION__, errno);
       default:
         ;
     }
@@ -555,20 +525,18 @@ redo_ssl_read:
 static int read_socket(int fd, char **msg, SSL *ssl, char *early_data)
 {
   if (early_data) {
-    log_msg(LGG_DEBUG, "%s: early data\n", __FUNCTION__);
     *msg = early_data;
     return strlen(early_data);
   }
 
   *msg = realloc(*msg, CHAR_BUF_SIZE + 1);
   if (!(*msg)) {
-    log_msg(LGG_ERR, "Out of memory. Cannot malloc receiver buffer.");
     return -1;
   }
 
   int i, rv, msg_len = 0;
   char *bufptr = *msg;
-  for (i=1; i<=MAX_CHAR_BUF_LOTS;) { /* 128K max with CHAR_BUF_SIZE == 4K */
+  for (i=1; i<=MAX_CHAR_BUF_LOTS;) {
     if (!ssl)
       rv = recv(fd, bufptr, CHAR_BUF_SIZE, 0);
     else
@@ -581,14 +549,11 @@ static int read_socket(int fd, char **msg, SSL *ssl, char *early_data)
       break;
     else {
       ++i;
-      // Fix: Memory-Leak bei realloc-Fehler vermeiden
       char *new_msg = realloc(*msg, CHAR_BUF_SIZE * i + 1);
       if (!new_msg) {
-          log_msg(LGG_ERR, "Out of memory. Cannot realloc receiver buffer. Size: %d", CHAR_BUF_SIZE * i);
-          return msg_len; /* start processing with whatever we received already */
+          return msg_len;
       }
       *msg = new_msg;
-      log_msg(LGG_DEBUG, "Realloc receiver buffer. Size: %d", CHAR_BUF_SIZE * i);
       bufptr = *msg + CHAR_BUF_SIZE * (i - 1);
     }
   }
@@ -603,17 +568,14 @@ redo_ssl_write:
   ret = SSL_write(ssl, (char *)buf, len);
   if (ret <= 0) {
     int sslerr = SSL_get_error(ssl, ret);
-    //log_msg(LGG_CRIT, "%s: ret:%d ssl error:%d", __FUNCTION__, ret, sslerr);
     switch(sslerr) {
       case SSL_ERROR_WANT_WRITE:
         ssl_attempt--;
         if (ssl_attempt > 0) goto redo_ssl_write;
         break;
       case SSL_ERROR_SSL:
-        //log_msg(LGG_CRIT, "%s: ssl error %d", __FUNCTION__, ERR_peek_last_error());
         break;
       case SSL_ERROR_SYSCALL:
-        //log_msg(LGG_CRIT, "%s: errno:%d", __FUNCTION__, errno);
       default:
         ;
     }
@@ -627,66 +589,47 @@ static int write_socket(int fd, const char *msg, int msg_len, SSL *ssl, char **e
   if (ssl) {
 #ifdef TLS1_3_VERSION
     if (*early_data) {
-      log_msg(LGG_DEBUG, "%s: early data\n", __FUNCTION__);
-      // Fix: SSL_write_early_data Rückgabewert prüfen
       int early_rv = SSL_write_early_data(ssl, msg, msg_len, (size_t*)&rv);
       if (early_rv <= 0) {
-        log_msg(LGG_ERR, "SSL_write_early_data failed: %d", early_rv);
         return -1;
       }
 
-      /* finish the handshake. assume it'll simply succeed */
       if (SSL_accept(ssl) <= 0) {
-        log_msg(LGG_ERR, "SSL_accept after early data failed");
         return -1;
       }
 
-      /* job done. reset to NULL.
-         memory freed when 'buf' in conn_hanlder freed */
       *early_data = NULL;
 
     } else
 #endif
       rv = ssl_write(ssl, msg, msg_len);
   } else {
-    /* a blocking call, so zero should not be returned */
     rv = send(fd, msg, msg_len, 0);
   }
   return rv;
 }
 
 static int write_pipe(int fd, response_struct *pipedata) {
-  // High-Load Fix: Atomarer write() mit Retry-Mechanismus
-  // note that the parent must not perform a blocking pipe read without checking
-  // for available data, or else it may deadlock when we don't write anything
-  
   int attempts = 3;
   while (attempts--) {
     int rv = write(fd, pipedata, sizeof(*pipedata));
     
     if (rv == sizeof(*pipedata)) {
-      return rv; // Erfolg
+      return rv;
     }
     
     if (rv < 0) {
       if (errno == EINTR || errno == EAGAIN) {
-        // Retry bei temporären Fehlern
         continue;
       }
-      log_msg(LGG_ERR, "write() to pipe reported error: %m");
       return rv;
     } else if (rv == 0) {
-      log_msg(LGG_ERR, "write() to pipe reported no data written and no error");
       return rv;
     } else {
-      log_msg(LGG_ERR, "write() to pipe reported writing only %d bytes of expected %u (attempt %d)",
-          rv, (unsigned int)sizeof(*pipedata), 3-attempts);
-      // Partial write - retry
       continue;
     }
   }
   
-  log_msg(LGG_ERR, "write_pipe failed after 3 attempts");
   return -1;
 }
 
@@ -702,19 +645,15 @@ void get_client_ip(int socket_fd, char *ip, int ip_len, char *port, int port_len
       getnameinfo((struct sockaddr *)&sin_addr, sin_addr_len,
                ip, ip_len, port, port_len, NI_NUMERICHOST | NI_NUMERICSERV ) != 0) {
     ip[0] = '\0';
-    log_msg(LGG_ERR, "getnameinfo failed to get client_ip");
   }
 }
 
 void* conn_handler( void *ptr )
 {
-  // High-Load Fix: Lokale Kopie der globalen Config für Thread-Safety
   if (!g) {
-    log_msg(LGG_ERR, "Global state pointer is NULL");
     return NULL;
   }
   
-  // Atomarer Snapshot der globalen Konfiguration
   struct {
     int argc;
     char **argv;
@@ -732,7 +671,6 @@ void* conn_handler( void *ptr )
 #endif
   } config;
   
-  // Schneller Snapshot - minimiert Zeit in kritischer Sektion
   config.argc = GLOBAL(g, argc);
   config.argv = GLOBAL(g, argv);
   config.new_fd = CONN_TLSTOR(ptr, new_fd);
@@ -747,9 +685,7 @@ void* conn_handler( void *ptr )
 #ifdef DEBUG
   config.warning_time = GLOBAL(g, warning_time);
 #endif
-  // NOTES:
-  // - from here on, all exit points should be counted or at least logged
-  // - exit() should not be called from the child process
+
   response_struct pipedata = {0};
   struct timeval timeout = {config.select_timeout, 0};
   int rv = 0;
@@ -760,77 +696,63 @@ void* conn_handler( void *ptr )
   int rsize;
   char* version_string = NULL;
   char* stat_string = NULL;
-  int num_req = 0; // number of requests processed by this thread
+  int num_req = 0;
   char *req_url = NULL;
   unsigned int req_len = 0;
   #define HOST_LEN_MAX 80
   char host[HOST_LEN_MAX + 1];
   char *post_buf = NULL;
   size_t post_buf_len = 0;
-  unsigned int total_bytes = 0; /* number of bytes received by this thread */
+  unsigned int total_bytes = 0;
   #define CORS_ORIGIN_LEN_MAX 256
   char *cors_origin = NULL;
-  char client_ip[INET6_ADDRSTRLEN]= {'\0'}; //yipst
+  char client_ip[INET6_ADDRSTRLEN]= {'\0'};
   char *method = NULL;
 
 #ifdef DEBUG
   int do_warning = (config.warning_time > 0);
-  // set up signal handling
   {
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = child_signal_handler;
     sigemptyset(&sa.sa_mask);
-    // set signal handler for termination
     if (sigaction(SIGTERM, &sa, NULL)) {
-      log_msg(LGG_DEBUG, "sigaction(SIGTERM) reported error: %m");
     }
-    // set signal handler for info
-    sa.sa_flags = SA_RESTART; // prevent EINTR from interrupted library calls
+    sa.sa_flags = SA_RESTART;
     if (sigaction(SIGUSR2, &sa, NULL)) {
-      log_msg(LGG_DEBUG, "sigaction(SIGUSR2) reported error: %m");
     }
   }
   printf("%s: tid = %d\n", __FUNCTION__, (int)pthread_self());
 #endif
 
-  // the socket is connected, but we need to perform a check for incoming data
-  // since we're using blocking checks, we first want to set a timeout
-  if (setsockopt(config.new_fd, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(struct timeval)) < 0)
-    log_msg(LGG_DEBUG, "setsockopt(timeout) reported error: %m");
+  if (setsockopt(config.new_fd, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(struct timeval)) < 0) {
+  }
 
   pipedata.ssl_ver = (CONN_TLSTOR(ptr, ssl)) ? SSL_version(CONN_TLSTOR(ptr, ssl)) : 0;
   pipedata.run_time = CONN_TLSTOR(ptr, init_time);
   get_client_ip(config.new_fd, client_ip, sizeof client_ip, NULL, 0);
 
-  /* main event loop */
   while(1) {
 
-    /* wait for requests if no early data on initial connection */
     if (!CONN_TLSTOR(ptr, early_data)) {
 
       struct pollfd pfd = { config.new_fd, POLLIN, POLLIN };
       int selrv = poll(&pfd, 1, 1000 * config.http_keepalive);
       TESTPRINT("socket:%d selrv:%d errno:%d\n", config.new_fd, selrv, errno);
 
-      /* selrv -1: error; selrv 0: no data before timed out;
-         selrv > 0 and peek_socket <= 0: client disconnects */
-
       int peekrv = peek_socket(config.new_fd, CONN_TLSTOR(ptr, ssl));
       if (total_bytes == 0 && peekrv <= 0) {
 
-        /* no data in the whole session. counted as one 'cls'
-           run_time is ignorable */
         if (CONN_TLSTOR(ptr, ssl))
           pipedata.ssl = SSL_HIT_CLS;
         pipedata.status = FAIL_CLOSED;
         pipedata.rx_total = 0;
         write_pipe(config.pipefd, &pipedata);
         num_req++;
-        break; /* done with this thread */
+        break;
       }
       if (selrv <= 0 || peekrv <=0 )
-        break; /* done with this thread */
+        break;
     }
 
     get_time(&start_time);
@@ -844,16 +766,13 @@ void* conn_handler( void *ptr )
     rv = read_socket(config.new_fd, &buf, CONN_TLSTOR(ptr, ssl), CONN_TLSTOR(ptr, early_data));
     if (rv <= 0) {
       if (errno == ECONNRESET || rv == 0) {
-        log_msg(LGG_DEBUG, "recv() ECONNRESET: %m");
         pipedata.status = FAIL_CLOSED;
       } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        log_msg(LGG_DEBUG, "recv() EAGAIN: %m");
         pipedata.status = FAIL_TIMEOUT;
       } else {
-        log_msg(LGG_DEBUG, "recv() error: %m");
         pipedata.status = FAIL_GENERAL;
       }
-    } else {                    // got some data
+    } else {
       if (CONN_TLSTOR(ptr, ssl)) {
         pipedata.ssl = CONN_TLSTOR(ptr, early_data) ? SSL_HIT_RTT0 : SSL_HIT;
       } else {
@@ -877,70 +796,34 @@ void* conn_handler( void *ptr )
           host[0] = '\0';
           if (strlen(req) > req_len) {
             req_len = strlen(req);
-            // Memory-Leak Fix: Null-Check für realloc
             char *new_req_url = realloc(req_url, req_len + 1);
             if (new_req_url) {
               req_url = new_req_url;
               req_url[0] = '\0';
             } else {
-              log_msg(LGG_ERR, "Failed to realloc req_url");
-              // Weiter mit altem req_url falls vorhanden
               if (req_url) req_url[0] = '\0';
             }
           }
           if (req_url) {
             strcpy(req_url, req);
           }
-          /* Stub for go-mpulse boomerang requests */
 
-log_msg(LGG_INFO, "Stubbing go-mpulse boomerang: %s%s", host, req_url ? req_url : "");
-const char *resp =
-  "HTTP/1.1 204 No Content\r\n"
-  "Access-Control-Allow-Origin: *\r\n"
-  "Connection: close\r\n"
-  "\r\n";
-write_socket(config.new_fd,
-             resp,
-             strlen(resp),
-             CONN_TLSTOR(ptr, ssl),
-             &CONN_TLSTOR(ptr, early_data));
-// Fix: early_data zurücksetzen vor cleanup
-if (CONN_TLSTOR(ptr, early_data)) {
-  CONN_TLSTOR(ptr, early_data) = NULL;
-}
-// Memory cleanup vor return
-free(cors_origin);
-free(req_url);
-free(post_buf);
-free(aspbuf);
-free(buf);
-conn_stor_relinq(ptr);
-return NULL;
-
-
-          // Simuliere Adblock mit CORS-konformer Antwort
           if (req_url && strstr(req_url, "/simulate-block")) {
-                    log_msg(LGG_INFO, "Simulating adblock with CORS-safe response for %s", req_url);
-
-                    // 1. Leere 204-Antwort mit Access-Control-Allow-Origin: *
                     const char *resp =
                       "HTTP/1.1 204 No Content\r\n"
                       "Access-Control-Allow-Origin: *\r\n"
                       "Connection: close\r\n"
                       "\r\n";
 
-                    // 2. Sende die Antwort – write_socket kümmert sich um TLS vs. Klartext
                     write_socket(config.new_fd,
                                  resp,
                                  strlen(resp),
                                  CONN_TLSTOR(ptr, ssl),
                                  &CONN_TLSTOR(ptr, early_data));
 
-                    // Fix: early_data zurücksetzen vor cleanup
                     if (CONN_TLSTOR(ptr, early_data)) {
                       CONN_TLSTOR(ptr, early_data) = NULL;
                     }
-                    // 3. Memory cleanup vor return
                     free(cors_origin);
                     free(req_url);
                     free(post_buf);
@@ -950,11 +833,9 @@ return NULL;
                     return NULL;
           }
 
-          /* locate and copy Host */
-          char *tmph = strstr_first(bufptr, "Host: "); // e.g. "Host: abc.com"
+          char *tmph = strstr_first(bufptr, "Host: ");
           if (tmph) {
-            // Fix: Sichere strncpy mit garantierter Null-Terminierung
-            strncpy(host, tmph + 6 /* strlen("Host: ") */, HOST_LEN_MAX);
+            strncpy(host, tmph + 6, HOST_LEN_MAX);
             host[HOST_LEN_MAX] = '\0';
             strtok(host, "\r\n");
             TESTPRINT("socket:%d host:%s\n", config.new_fd, host);
@@ -962,23 +843,19 @@ return NULL;
         }
       }
 
-      /* CORS */
       char *orig_hdr;
       orig_hdr = strstr_first(bufptr, "Origin: ");
       if (orig_hdr) {
-        // Memory-Leak Fix: Null-Check für realloc
         char *new_cors_origin = realloc(cors_origin, CORS_ORIGIN_LEN_MAX);
         if (new_cors_origin) {
           cors_origin = new_cors_origin;
           strncpy(cors_origin, orig_hdr + 8, CORS_ORIGIN_LEN_MAX - 1);
           cors_origin[CORS_ORIGIN_LEN_MAX - 1] = '\0';
           strtok(cors_origin, "\r\n");
-          if (strncmp(cors_origin, "null", 4) == 0) { /* some web developers are just ... */
+          if (strncmp(cors_origin, "null", 4) == 0) {
               cors_origin[0] = '*';
               cors_origin[1] = '\0';
           }
-        } else {
-          log_msg(LGG_ERR, "Failed to realloc cors_origin");
         }
       }
 
@@ -986,7 +863,6 @@ return NULL;
       method = req ? strtok_r(req, " ", &reqptr) : NULL;
 
       if (method == NULL) {
-        log_msg(LGG_DEBUG, "client did not specify method");
       } else {
         TESTPRINT("method: '%s'\n", method);
         if (!strcmp(method, "OPTIONS")) {
@@ -1006,30 +882,24 @@ return NULL;
           length = atoi(strtok(h, "\r\n"));
 
             if (log_verbose >= LGG_INFO) {
-            log_msg(LGG_DEBUG, "POST socket: %d Content-Length: %d", config.new_fd, length);
 
             post_buf_size = (length < MAX_HTTP_POST_LEN) ? length : MAX_HTTP_POST_LEN;
-            // Memory-Leak Fix: Null-Check für realloc
             char *new_post_buf = realloc(post_buf, post_buf_size + 1);
             if (!new_post_buf) {
-              log_msg(LGG_ERR, "Out of memory. Cannot malloc receiver buffer.");
               goto end_post;
             }
             post_buf = new_post_buf;
             post_buf[post_buf_size] = '\0';
 
-            /* body points to "\r\n\r\n" */
             if (body && body_len > 4) {
               recv_len = body_len - 4;
               memcpy(post_buf, body + 4, recv_len);
               length -= recv_len;
               post_buf_size -= recv_len;
             }
-            log_msg(LGG_DEBUG, "POST socket: %d expect length: %d", config.new_fd, length);
 
             pipedata.run_time += elapsed_time_msec(start_time);
 
-            /* caputre POST content */
             for (; length > 0 && wait_cnt > 0;) {
               get_time(&start_time);
 
@@ -1038,7 +908,6 @@ return NULL;
               else
                 rv = recv(config.new_fd, post_buf + recv_len, post_buf_size, MSG_WAITALL);
 
-              log_msg(LGG_DEBUG, "POST socket:%d recv length:%d; errno:%d", config.new_fd, rv, errno);
               if (rv > 0) {
                 pipedata.rx_total += rv;
                 length -= rv;
@@ -1048,8 +917,6 @@ return NULL;
                   post_buf[recv_len] = '\0';
                 } else {
                   if (length > CHAR_BUF_SIZE) {
-                    /* discard bytes from 'MAX_HTTP_POST_LEN - CHAR_BUF_SIZE'
-                    to 'Content-Length - CHAR_BUF_SIZE' */
                     recv_len += rv - CHAR_BUF_SIZE;
                     post_buf_size = CHAR_BUF_SIZE;
                   } else {
@@ -1058,7 +925,7 @@ return NULL;
                   }
                 }
                 pipedata.run_time += elapsed_time_msec(start_time);
-                wait_cnt = MAX_HTTP_POST_RETRY; /* reset timeout */
+                wait_cnt = MAX_HTTP_POST_RETRY;
               } else
                 --wait_cnt;
             }
@@ -1066,17 +933,14 @@ return NULL;
             if (post_buf == NULL) {
               post_buf = malloc(CHAR_BUF_SIZE + 1);
               if (!post_buf) {
-                log_msg(LGG_ERR, "Failed to malloc post_buf");
                 goto end_post;
               }
             }
-            /* body points to "\r\n\r\n" */
             if (body && body_len > 4)
               length -= body_len - 4;
 
             pipedata.run_time += elapsed_time_msec(start_time);
 
-            /* caputre POST content */
             for (; length > 0 && wait_cnt > 0;) {
               get_time(&start_time);
 
@@ -1089,11 +953,10 @@ return NULL;
                 pipedata.rx_total += rv;
                 length -= rv;
                 pipedata.run_time += elapsed_time_msec(start_time);
-                wait_cnt = MAX_HTTP_POST_RETRY; /* reset timeout */
+                wait_cnt = MAX_HTTP_POST_RETRY;
               } else
                 --wait_cnt;
             }
-            /* drained data */
             recv_len = 0;
           }
           get_time(&start_time);
@@ -1101,19 +964,13 @@ return NULL;
 end_post:
           post_buf_len = recv_len;
           pipedata.status = SEND_POST;
-          /* default httpnulltext response */
         } else if (!strcmp(method, "GET")) {
-          // send default from here, no matter what happens
           pipedata.status = DEFAULT_REPLY;
-          // trim up to non path chars
           char *path = strtok_r(NULL, " ", &reqptr);
           if (path == NULL) {
             pipedata.status = SEND_NO_URL;
-            log_msg(LGG_DEBUG, "client did not specify URL for GET request");
           } else if (!strncmp(path, "/favicon.ico", 12)) {
-    // favicon aus eingebettetem Header ausliefern
     size_t favicon_len = favicon_ico_len;
-    // HTTP‑Header
     char hdr[128];
     int hdrlen = snprintf(hdr, sizeof hdr,
         "HTTP/1.1 200 OK\r\n"
@@ -1136,7 +993,6 @@ write_socket(config.new_fd,
     pipedata.status = SEND_ICO;
     continue;
         } else if (!strncmp(path, "/log=", 5) && CONN_TLSTOR(ptr, allow_admin)) {
-            // Fix: Input-Validierung für log-Level
             if (strlen(path) <= 5) {
               pipedata.status = SEND_BAD;
             } else {
@@ -1151,12 +1007,10 @@ write_socket(config.new_fd,
           } else if (!strncmp(path, "/ca.crt", 7)) {
             FILE *fp;
             char *ca_file = NULL;
-            // Fix: KEINE 404! Immer erfolgreiche Response
             response = httpnulltext;
             rsize = sizeof httpnulltext - 1;
             pipedata.status = SEND_TXT;
 
-            // Fix: asprintf Rückgabewert korrekt prüfen (-1 = Fehler)
             if (asprintf(&ca_file, "%s%s", config.pem_dir, "/ca.crt") != -1 &&
                NULL != (fp = fopen(ca_file, "r")))
             {
@@ -1166,7 +1020,6 @@ write_socket(config.new_fd,
               rsize = asprintf(&aspbuf, "%s%ld%s", httpcacert, file_sz, httpcacert2);
               if (rsize != -1 && (aspbuf = (char*)realloc(aspbuf, rsize + file_sz + 16)) != NULL &&
                      fread(aspbuf + rsize, 1, file_sz, fp) == (size_t)file_sz) {
-                                                              // should be fairly safe to cast here
                 response = aspbuf;
                 rsize += file_sz;
                 pipedata.status = SEND_TXT;
@@ -1174,7 +1027,6 @@ write_socket(config.new_fd,
               fclose(fp);
             }
             if (ca_file) free(ca_file);
-            /* aspbuf will be freed at the of the loop */
           } else if (!strcmp(path, config.stats_url) && CONN_TLSTOR(ptr, allow_admin)) {
             pipedata.status = SEND_STATS;
             version_string = get_version(config.argc, config.argv);
@@ -1189,17 +1041,13 @@ write_socket(config.new_fd,
                                version_string,
                                stat_string,
                                httpstats4);
-              // Fix: asprintf Fehler-Check hinzufügen - ABER KEINE 404!
               if (rsize == -1) {
-                log_msg(LGG_ERR, "asprintf failed for stats response");
-                // Fallback: leere HTML statt 404
                 response = httpnulltext;
                 rsize = sizeof httpnulltext - 1;
               } else {
                 response = aspbuf;
               }
             }
-            // Memory-Leak Fix: Sofort freigeben
             if (version_string) {
               free(version_string);
               version_string = NULL;
@@ -1222,17 +1070,13 @@ write_socket(config.new_fd,
                                version_string,
                                stat_string,
                                txtstats3);
-              // Fix: asprintf Fehler-Check hinzufügen - ABER KEINE 404!
               if (rsize == -1) {
-                log_msg(LGG_ERR, "asprintf failed for text stats response");
-                // Fallback: leere HTML statt 404
                 response = httpnulltext;
                 rsize = sizeof httpnulltext - 1;
               } else {
                 response = aspbuf;
               }
             }
-            // Memory-Leak Fix: Sofort freigeben
             if (version_string) {
               free(version_string);
               version_string = NULL;
@@ -1254,20 +1098,17 @@ write_socket(config.new_fd,
             response = httpnullpixel;
             rsize = sizeof httpnullpixel - 1;
           } else {
-            // pick out encoded urls (usually advert redirects)
             if (config.do_redirect && strcasestr(path, "=http")) {
               char *decoded = malloc(strlen(path)+1);
               if (decoded) {
                 urldecode(decoded, path);
 
-                // double decode
                 urldecode(path, decoded);
                 free(decoded);
                 url = strstr_last(path, "http://");
                 if (url == NULL) {
                   url = strstr_last(path, "https://");
                 }
-                // WORKAROUND: google analytics block - request bomb on pages with conversion callbacks (see in chrome)
                 if (url) {
                   char *tok = NULL;
                   for (tok = strtok_r(NULL, "\r\n", &bufptr); tok; tok = strtok_r(NULL, "\r\n", &bufptr)) {
@@ -1293,10 +1134,7 @@ write_socket(config.new_fd,
                   free(tmpcors);
                 }
               }
-              // Fix: asprintf Fehler-Check für Redirect - ABER KEINE 404!
               if (rsize == -1) {
-                log_msg(LGG_ERR, "asprintf failed for redirect response");
-                // Fallback: leere HTML statt 404
                 pipedata.status = SEND_TXT;
                 response = httpnulltext;
                 rsize = sizeof httpnulltext - 1;
@@ -1309,24 +1147,19 @@ write_socket(config.new_fd,
             } else {
               char *file = strrchr(strtok(path, "?#;="), '/');
               if (file == NULL) {
-                // Fix: KEINE 404! Ad-Blocker soll immer "erfolgreich" sein
                 pipedata.status = SEND_TXT;
                 response = httpnulltext;
                 rsize = sizeof httpnulltext - 1;
-                log_msg(LGG_DEBUG, "URL contains invalid file path %s - sending empty HTML", path);
               } else {
                 TESTPRINT("file: '%s'\n", file);
                 char *ext = strrchr(file, '.');
                 if (ext == NULL) {
-                  // Fix: KEINE 404! Unbekannte URLs als leere HTML behandeln
                   pipedata.status = SEND_TXT;
                   response = httpnulltext;
                   rsize = sizeof httpnulltext - 1;
-                  log_msg(LGG_DEBUG, "no file extension %s from path %s - sending empty HTML", file, path);
                 } else {
                   TESTPRINT("ext: '%s'\n", ext);
                   
-                  // === ERWEITERTE EXTENSION-BEHANDLUNG MIT ASP-UNTERSTÜTZUNG ===
                   const char *norm_ext = (ext[0] == '.') ? ext + 1 : ext;
                   
                   if (!strcasecmp(norm_ext, "gif")) {
@@ -1339,7 +1172,7 @@ write_socket(config.new_fd,
                     pipedata.status = SEND_PNG;
                     response = httpnull_png;
                     rsize = sizeof httpnull_png - 1;
-                  } else if (!strncasecmp(norm_ext, "jp", 2)) { // jpg, jpeg
+                  } else if (!strncasecmp(norm_ext, "jp", 2)) {
                     TESTPRINT("Sending jpg response\n");
                     pipedata.status = SEND_JPG;
                     response = httpnull_jpg;
@@ -1355,7 +1188,6 @@ write_socket(config.new_fd,
                     response = httpnull_ico;
                     rsize = sizeof httpnull_ico - 1;
                   }
-                  // === NEUE ASP-UNTERSTÜTZUNG ===
                   else if (!strcasecmp(norm_ext, "asp")) {
                     TESTPRINT("Sending ASP response\n");
                     pipedata.status = SEND_ASP;
@@ -1372,7 +1204,6 @@ write_socket(config.new_fd,
                     response = httpnull_ashx;
                     rsize = sizeof httpnull_ashx - 1;
                   }
-                  // === WEITERE SERVER-SKRIPTE ===
                   else if (!strcasecmp(norm_ext, "php")) {
                     TESTPRINT("Sending PHP response\n");
                     pipedata.status = SEND_PHP;
@@ -1383,13 +1214,12 @@ write_socket(config.new_fd,
                     pipedata.status = SEND_JSP;
                     response = httpnull_jsp;
                     rsize = sizeof httpnull_jsp - 1;
-                  } else if (!strncasecmp(norm_ext, "js", 2)) {  // .js, .jsx
+                  } else if (!strncasecmp(norm_ext, "js", 2)) {
                     TESTPRINT("Sending JavaScript response\n");
                     pipedata.status = SEND_JS;
                     response = httpnull_js;
                     rsize = sizeof httpnull_js - 1;
                   }
-                  // === WEB-STANDARDS ===
                   else if (!strcasecmp(norm_ext, "css")) {
                     TESTPRINT("Sending CSS response\n");
                     pipedata.status = SEND_CSS;
@@ -1401,7 +1231,6 @@ write_socket(config.new_fd,
                     response = httpnulltext;
                     rsize = sizeof httpnulltext - 1;
                   }
-                  // === DATENFORMATE ===
                   else if (!strcasecmp(norm_ext, "xml") || !strcasecmp(norm_ext, "rss")) {
                     TESTPRINT("Sending XML response\n");
                     pipedata.status = SEND_XML;
@@ -1413,7 +1242,6 @@ write_socket(config.new_fd,
                     response = httpnulltext;
                     rsize = sizeof httpnulltext - 1;
                   }
-                  // === CGI UND ANDERE SERVER-SKRIPTE ===
                   else if (!strcasecmp(norm_ext, "cgi") || !strcasecmp(norm_ext, "pl") || 
                            !strcasecmp(norm_ext, "fcgi")) {
                     TESTPRINT("Sending CGI/Perl response\n");
@@ -1421,50 +1249,39 @@ write_socket(config.new_fd,
                     response = httpnulltext;
                     rsize = sizeof httpnulltext - 1;
                   }
-                  // === JAVA SERVER-TECHNOLOGIEN ===
                   else if (!strcasecmp(norm_ext, "do") || !strcasecmp(norm_ext, "action")) {
                     TESTPRINT("Sending Java Action response\n");
                     pipedata.status = SEND_TXT;
                     response = httpnulltext;
                     rsize = sizeof httpnulltext - 1;
                   }
-                  // === .NET WEB SERVICES ===
                   else if (!strcasecmp(norm_ext, "asmx") || !strcasecmp(norm_ext, "svc")) {
                     TESTPRINT("Sending .NET Web Service response\n");
                     pipedata.status = SEND_TXT;
                     response = httpnulltext;
                     rsize = sizeof httpnulltext - 1;
                   }
-                  // === COLDFUSION ===
                   else if (!strcasecmp(norm_ext, "cfm")) {
                     TESTPRINT("Sending ColdFusion response\n");
                     pipedata.status = SEND_TXT;
                     response = httpnulltext;
                     rsize = sizeof httpnulltext - 1;
                   }
-                  // === FALLBACK FÜR ALLE ANDEREN EXTENSIONS ===
                   else {
-                    // Fix: Automatische Behandlung aller anderen Extensions
-                    pipedata.status = SEND_TXT; // Status bleibt konstant für Kompatibilität
+                    pipedata.status = SEND_TXT;
                     response = httpnulltext;
                     rsize = sizeof httpnulltext - 1;
                     
-                    // Detailliertes Logging mit Extension-Info für bessere Diagnostik
-                    log_msg(LGG_DEBUG, "Auto-handling extension '%s' from path '%s' - sending empty HTML", 
-                            norm_ext, path);
                     TESTPRINT("Sending auto-response for extension '%s'\n", norm_ext);
                   }
                 }
               }
             }
-          } // end of GET
+          }
         } else {
           if (!strcmp(method, "HEAD")) {
-            // HEAD (TODO: send header of what the actual response type would be?)
             pipedata.status = SEND_HEAD;
           } else {
-            // something else, possibly even non-HTTP
-            log_msg(LGG_DEBUG, "Sending HTTP 501 response for unknown HTTP method: %s", method);
             pipedata.status = SEND_BAD;
           }
           response = http501;
@@ -1473,29 +1290,24 @@ write_socket(config.new_fd,
       }
       TESTPRINT("%s: req type %d\n", __FUNCTION__, pipedata.status);
 
-      /* cors */
       if (response == httpnulltext) {
-        // High-Load Fix: Minimize asprintf() calls für bessere Performance
         if (!cors_origin) {
           rsize = asprintf(&aspbuf, httpnulltext, "");
         } else {
-          // Vorgefertigte CORS-Response mit Length-Limit für Performance
           static const char cors_template[] = 
             "Access-Control-Allow-Origin: %.100s\r\n"
             "Access-Control-Allow-Credentials: true\r\n"
             "Access-Control-Allow-Headers: Origin, X-Requested-With, Content-Type, Accept, documentReferer\r\n";
           
-          char cors_buf[256]; // Fixed size statt malloc
+          char cors_buf[256];
           int cors_len = snprintf(cors_buf, sizeof(cors_buf), cors_template, cors_origin);
           
           if (cors_len > 0 && cors_len < sizeof(cors_buf)) {
             rsize = asprintf(&aspbuf, httpnulltext, cors_buf);
           } else {
-            // Fallback bei Overflow
             rsize = asprintf(&aspbuf, httpnulltext, "");
           }
         }
-        // Fix: asprintf Fehler-Check für CORS
         if (rsize != -1) {
           response = aspbuf;
         }
@@ -1506,44 +1318,34 @@ write_socket(config.new_fd,
       TIME_CHECK("response selection");
 #endif
 
-    // done processing socket connection; now handle selected result action
     if (pipedata.status == FAIL_GENERAL) {
-      log_msg(LGG_DEBUG, "Client request processing completed with FAIL_GENERAL status");
     } else if (pipedata.status != FAIL_TIMEOUT && pipedata.status != FAIL_CLOSED) {
 
-      // only attempt to send response if we've chosen a valid response type
       errno = 0;
       rv = write_socket(config.new_fd, response, rsize, CONN_TLSTOR(ptr, ssl), &CONN_TLSTOR(ptr, early_data));
       if (rv < 0) {
         if (errno == ECONNRESET || errno == EPIPE) {
           if (CONN_TLSTOR(ptr, ssl))
             strncpy(host, CONN_TLSTOR(ptr, tlsext_cb_arg)->servername, HOST_LEN_MAX);
-          log_msg(LGG_WARNING, "disconnected client: %s method: %s server: %s", client_ip, method ? method : "unknown", host);
           pipedata.status = FAIL_REPLY;
         } else {
-          log_msg(LGG_ERR, "attempt to send response for status=%d resulted in send() error: %m", pipedata.status);
           pipedata.status = FAIL_GENERAL;
         }
       } else if (rv != rsize) {
-        log_msg(LGG_ERR, "send() reported only %d of %d bytes sent; status=%d", rv, rsize, pipedata.status);
       }
 
       if (log_verbose >= LGG_INFO) {
         log_xcs(LGG_INFO, client_ip, host, pipedata.ssl_ver, req_url, post_buf, post_buf_len);
       }
 
-      // Memory-Leak Fix: Sofort freigeben nach Senden
       if (aspbuf) {
         free(aspbuf);
         aspbuf = NULL;
       }
     }
 
-    /*** NOTE: pipedata.status should not be altered after this point ***/
-
     TIME_CHECK("response send()");
 
-    // store time delta in milliseconds
     pipedata.run_time += elapsed_time_msec(start_time);
     write_pipe(config.pipefd, &pipedata);
     num_req++;
@@ -1554,34 +1356,27 @@ write_socket(config.new_fd,
     TIME_CHECK("pipe write()");
 
     if (pipedata.status == FAIL_CLOSED)
-      break; /* goto done_with_this_thread */
+      break;
 
-  } /* end of main event loop */
+  }
 
-  /* done with the thread and let's finish with some house keeping */
-  log_msg(LGG_DEBUG, "Exit recv loop socket:%d rv:%d errno:%d num_req:%d\n", config.new_fd, rv, errno, num_req);
-
-  // signal the socket connection that we're done read-write
   if(CONN_TLSTOR(ptr, ssl)){
     SSL_set_shutdown(CONN_TLSTOR(ptr, ssl), SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
     SSL_free(CONN_TLSTOR(ptr, ssl));
   }
 
-  if (shutdown(config.new_fd, SHUT_RDWR) < 0)
-    log_msg(LGG_DEBUG, "%s shutdown error: %m", __FUNCTION__);
-  if (close(config.new_fd) < 0)
-    log_msg(LGG_DEBUG, "%s close error: %m", __FUNCTION__);
+  if (shutdown(config.new_fd, SHUT_RDWR) < 0) {
+  }
+  if (close(config.new_fd) < 0) {
+  }
 
   TIME_CHECK("socket close()");
   
-  // decrement number of service threads/processes by one before we exit
-  // don't check for write errors
   memset(&pipedata, 0, sizeof(pipedata));
   pipedata.status = ACTION_DEC_KCC;
   pipedata.krq = num_req;
   rv = write(config.pipefd, &pipedata, sizeof(pipedata));
 
-  // Memory-Leak Fix: Finale Aufräumung vor Thread-Ende
   if (cors_origin) {
     free(cors_origin);
     cors_origin = NULL;
@@ -1602,7 +1397,6 @@ write_socket(config.new_fd,
     free(buf);
     buf = NULL;
   }
-  // version_string und stat_string sind bereits oben freigegeben
 
   conn_stor_relinq(ptr);
   return NULL;
@@ -1612,7 +1406,6 @@ write_socket(config.new_fd,
 // ASP-KONFIGURATIONSFUNKTIONEN
 // =============================================================================
 
-// ASP-Handler Konfiguration
 typedef struct {
     int enable_asp_logging;
     int enable_mime_detection;
@@ -1620,7 +1413,6 @@ typedef struct {
     char default_charset[32];
 } asp_config_t;
 
-// Globale ASP-Konfiguration (Thread-safe)
 static asp_config_t asp_config = {
     .enable_asp_logging = 1,
     .enable_mime_detection = 1,
@@ -1628,7 +1420,6 @@ static asp_config_t asp_config = {
     .default_charset = "UTF-8"
 };
 
-// ASP-Handler Konfiguration setzen
 void socket_handler_set_asp_config(int enable_logging, int enable_mime, const char *charset) {
     asp_config.enable_asp_logging = enable_logging;
     asp_config.enable_mime_detection = enable_mime;
@@ -1643,25 +1434,17 @@ void socket_handler_set_asp_config(int enable_logging, int enable_mime, const ch
 // ERWEITERTE FUNKTIONEN FÜR SKALIERBARKEIT UND MONITORING
 // =============================================================================
 
-// Socket Handler Initialisierung
 void socket_handler_init(void) {
-    // Initialisierung der ASP-Konfiguration
     asp_config.enable_asp_logging = 1;
     asp_config.enable_mime_detection = 1;
     asp_config.cache_responses = 0;
     strncpy(asp_config.default_charset, "UTF-8", sizeof(asp_config.default_charset) - 1);
     asp_config.default_charset[sizeof(asp_config.default_charset) - 1] = '\0';
-    
-    log_msg(LGG_INFO, "Socket handler initialized with ASP support");
 }
 
-// Socket Handler Cleanup
 void socket_handler_cleanup(void) {
-    // Cleanup-Operationen falls erforderlich
-    log_msg(LGG_INFO, "Socket handler cleanup completed");
 }
 
-// Metriken abrufen
 void socket_handler_get_metrics(char *buffer, size_t size) {
     if (!buffer || size == 0) return;
     
@@ -1677,17 +1460,11 @@ void socket_handler_get_metrics(char *buffer, size_t size) {
     );
 }
 
-// Thread Pool Konfiguration (Placeholder für zukünftige Erweiterungen)
 void socket_handler_set_thread_pool(int enable) {
-    log_msg(LGG_DEBUG, "Thread pool %s", enable ? "enabled" : "disabled");
 }
 
-// Rate Limiting Konfiguration (Placeholder für zukünftige Erweiterungen)
 void socket_handler_set_rate_limit(int tokens_per_sec) {
-    log_msg(LGG_DEBUG, "Rate limit set to %d tokens per second", tokens_per_sec);
 }
 
-// Memory Pool Größe (Placeholder für zukünftige Erweiterungen)
 void socket_handler_set_memory_pool_size(size_t size) {
-    log_msg(LGG_DEBUG, "Memory pool size set to %zu bytes", size);
 }

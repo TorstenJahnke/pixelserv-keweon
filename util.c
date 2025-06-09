@@ -22,9 +22,6 @@ void generate_random_pipe_path(char *buffer, size_t buflen) {
     buffer[5 + len] = '\0';
 }
 
-// stats data
-// note that child processes inherit a snapshot copy
-// public data (should probably change to a struct)
 volatile sig_atomic_t count = 0;
 volatile sig_atomic_t avg = 0;
 volatile sig_atomic_t rmx = 0;
@@ -72,7 +69,6 @@ volatile sig_atomic_t v12 = 0;
 volatile sig_atomic_t v10 = 0;
 volatile sig_atomic_t zrt = 0;
 
-// private data
 static struct timespec startup_time = {0, 0};
 static clockid_t clock_source = CLOCK_MONOTONIC;
 
@@ -81,11 +77,8 @@ void get_time(struct timespec *time) {
     if (errno == EINVAL &&
         clock_source == CLOCK_MONOTONIC) {
       clock_source = CLOCK_REALTIME;
-      syslog(LOG_WARNING, "clock_gettime() reports CLOCK_MONOTONIC not supported; switching to less accurate CLOCK_REALTIME");
-      get_time(time); // try again with new clock setting
+      get_time(time);
     } else {
-      // this should never happen
-      syslog(LOG_ERR, "clock_gettime() reported failure getting time: %m");
       time->tv_sec = time->tv_nsec = 0;
     }
   }
@@ -104,24 +97,20 @@ char* get_version(int argc, char* argv[]) {
   unsigned int optlen = 0, freeoptbuf = 0;
   unsigned int arglen[argc];
 
-  // capture startup_time if not yet set
   if (!startup_time.tv_sec) {
     get_time(&startup_time);
   }
 
-  // determine total size of all arguments
   for (int i = 1; i < argc; ++i) {
-    arglen[i] = strlen(argv[i]) + 1; // add 1 for leading space
+    arglen[i] = strlen(argv[i]) + 1;
     optlen += arglen[i];
   }
   if (optlen > 0) {
-    // allocate a buffer to hold all arguments
     optbuf = malloc((optlen * sizeof(char)) + 1);
     if (optbuf) {
       freeoptbuf = 1;
-      // concatenate arguments into buffer
       for (int i = 1, optlen = 0; i < argc; ++i) {
-        optbuf[optlen] = ' '; // prepend a space to each argument
+        optbuf[optlen] = ' ';
         strncpy(optbuf + optlen + 1, argv[i], arglen[i]);
         optlen += arglen[i];
       }
@@ -172,7 +161,6 @@ char* get_stats(const int sta_offset, const int stt_offset) {
     return retbuf;
 }
 
-// Use SMA for the first 500 samples approximated by # of requets. Use EMA afterwards
 float ema(float curr, int new, int *cnt) {
     if (count < 500) {
       curr *= *cnt;
@@ -188,7 +176,6 @@ double elapsed_time_msec(const struct timespec start_time) {
 
   if (!start_time.tv_sec &&
       !start_time.tv_nsec) {
-    log_msg(LGG_DEBUG, "check_time(): returning because start_time not set");
     return -1.0;
   }
 
@@ -197,7 +184,6 @@ double elapsed_time_msec(const struct timespec start_time) {
   diff_time.tv_sec = difftime(current_time.tv_sec, start_time.tv_sec) + 0.5;
   diff_time.tv_nsec = current_time.tv_nsec - start_time.tv_nsec;
   if (diff_time.tv_nsec < 0) {
-    // normalize nanoseconds
     diff_time.tv_sec  -= 1;
     diff_time.tv_nsec += 1000000000;
   }
@@ -211,12 +197,10 @@ void print_trace(int sig) {
   void *buf[32];
   char **strings;
   int size, i;
-  log_msg(LGG_CRIT, "signal %d\n", sig);
   size = backtrace(buf, 32);
   strings = backtrace_symbols(buf, size);
-  log_msg(LGG_CRIT, "backtrace:");
   for (i = 0; i < size; i++)
-    log_msg(LGG_CRIT, "%d %s", buf[i], strings[i]);
+    ;
   free(strings);
   exit(EXIT_FAILURE);
 }

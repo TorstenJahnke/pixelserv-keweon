@@ -12,8 +12,8 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
-#include <arpa/inet.h>  /* Added for IP wildcard support */
-#include <netinet/in.h> /* Added for sockaddr_in and sockaddr_in6 */
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <openssl/bn.h>
 #include <openssl/crypto.h>
 #include <openssl/err.h>
@@ -31,14 +31,12 @@
 #  include <malloc.h>
 #endif
 
-/* OpenSSL version compatibility */
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L
 #define OPENSSL_API_1_1 1
 #else
 #define OPENSSL_API_1_1 0
 #endif
 
-/* Legacy threading support for older OpenSSL versions */
 #if !OPENSSL_API_1_1
 static pthread_mutex_t *locks;
 #endif
@@ -54,7 +52,6 @@ static void **conn_stor;
 static int conn_stor_last = -1, conn_stor_max = -1;
 static pthread_mutex_t cslock = PTHREAD_MUTEX_INITIALIZER;
 
-/* Job Queue for parallel certificate generation */
 typedef struct cert_job {
     char cert_name[PIXELSERV_MAX_SERVER_NAME+1];
     struct cert_job *next;
@@ -65,15 +62,12 @@ static pthread_mutex_t cert_q_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  cert_q_cond = PTHREAD_COND_INITIALIZER;
 static volatile int cert_workers_shutdown = 0;
 
-/* Forward declarations */
 static void generate_cert(const char *cert_name,
                           const char *pem_dir,
                           X509_NAME *issuer,
                           EVP_PKEY *privkey,
                           const STACK_OF(X509_INFO) *cachain);
 
-/* WILDCARD IP FUNCTIONS */
-/* Enhanced IP detection */
 static int is_ip_address(const char *addr) {
     struct sockaddr_in sa4;
     struct sockaddr_in6 sa6;
@@ -83,7 +77,6 @@ static int is_ip_address(const char *addr) {
     return 0;
 }
 
-/* Generate universal catch-all certificate for all IPs */
 static void generate_universal_ip_cert(const char *pem_dir,
                                       X509_NAME *issuer,
                                       EVP_PKEY *privkey,
@@ -95,14 +88,13 @@ static void generate_universal_ip_cert(const char *pem_dir,
     X509_EXTENSION *ext = NULL;
     EVP_MD_CTX *p_ctx = NULL;
     
-    /* Mega SAN for all common IPs */
     char mega_san[2048];
     strcpy(mega_san, 
-        "IP:127.0.0.1,IP:127.0.0.254,"           /* localhost */
-        "IP:10.0.0.1,IP:10.255.255.254,"         /* 10.x.x.x */
-        "IP:192.168.0.1,IP:192.168.255.254,"     /* 192.168.x.x */
-        "IP:172.16.0.1,IP:172.31.255.254,"       /* 172.16-31.x.x */
-        "IP:192.168.1.1,IP:192.168.0.1,IP:10.0.0.1," /* common routers */
+        "IP:127.0.0.1,IP:127.0.0.254,"
+        "IP:10.0.0.1,IP:10.255.255.254,"
+        "IP:192.168.0.1,IP:192.168.255.254,"
+        "IP:172.16.0.1,IP:172.31.255.254,"
+        "IP:192.168.1.1,IP:192.168.0.1,IP:10.0.0.1,"
         "DNS:localhost,DNS:*.local,DNS:*.lan"
     );
 
@@ -112,20 +104,15 @@ static void generate_universal_ip_cert(const char *pem_dir,
     p_ctx = EVP_MD_CTX_create();
 #endif
     if (!p_ctx || EVP_DigestSignInit(p_ctx, NULL, EVP_sha256(), NULL, privkey) != 1) {
-        log_msg(LGG_ERR, "%s: failed to init sign context", __FUNCTION__);
         goto free_all;
     }
 
-    /* Generate key pair */
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-    /* OpenSSL 3.0+ */
     key = EVP_RSA_gen(2048);
     if (!key) {
-        log_msg(LGG_ERR, "%s: failed to generate RSA key", __FUNCTION__);
         goto free_all;
     }
 #elif OPENSSL_API_1_1
-    /* OpenSSL 1.1.x */
     key = EVP_PKEY_new();
     if (!key) goto free_all;
     
@@ -140,7 +127,6 @@ static void generate_universal_ip_cert(const char *pem_dir,
     }
     EVP_PKEY_CTX_free(pkey_ctx);
 #else
-    /* Legacy OpenSSL */
     BIGNUM *e = BN_new();
     if (!e) goto free_all;
     BN_set_word(e, RSA_F4);
@@ -160,23 +146,20 @@ static void generate_universal_ip_cert(const char *pem_dir,
     }
 #endif
 
-    /* Create certificate */
     x509 = X509_new();
     if (!x509) goto free_all;
     
     ASN1_INTEGER_set(X509_get_serialNumber(x509), rand());
-    X509_set_version(x509, 2); /* X509 v3 */
+    X509_set_version(x509, 2);
     
-    /* Random NotBefore date between -864000 and -172800 seconds */
     int offset = -(rand() % (864000 - 172800 + 1) + 172800);
     X509_gmtime_adj(X509_get_notBefore(x509), offset);
-    X509_gmtime_adj(X509_get_notAfter(x509), 3600*24*390L); /* 390 days */
+    X509_gmtime_adj(X509_get_notAfter(x509), 3600*24*390L);
     
     X509_set_issuer_name(x509, issuer);
     X509_NAME *name = X509_get_subject_name(x509);
     X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (unsigned char *)"*.universal.ip", -1, -1, 0);
 
-    /* Add the mega SAN extension */
     ext = X509V3_EXT_conf_nid(NULL, NULL, NID_subject_alt_name, mega_san);
     if (!ext) goto free_all;
     X509_add_ext(x509, ext, -1);
@@ -190,19 +173,15 @@ static void generate_universal_ip_cert(const char *pem_dir,
     X509_set_pubkey(x509, key);
     X509_sign_ctx(x509, p_ctx);
 
-    /* Save certificate to file */
     snprintf(fname, PIXELSERV_MAX_PATH, "%s/universal_ips.pem", pem_dir);
     
     FILE *fp = fopen(fname, "wb");
     if (!fp) {
-        log_msg(LGG_ERR, "%s: failed to open file for write: %s", __FUNCTION__, fname);
         goto free_all;
     }
 
-    /* Write certificate */
     PEM_write_X509(fp, x509);
 
-    /* Write CA chain */
     if (cachain) {
         for (int i = 0; i < sk_X509_INFO_num(cachain); i++) {
             X509_INFO *xi = sk_X509_INFO_value(cachain, i);
@@ -212,11 +191,8 @@ static void generate_universal_ip_cert(const char *pem_dir,
         }
     }
 
-    /* Write private key */
     PEM_write_PrivateKey(fp, key, NULL, NULL, 0, NULL, NULL);
     fclose(fp);
-    
-    log_msg(LGG_NOTICE, "🔒 Universal IP certificate generated: %s", fname);
 
 free_all:
     EVP_PKEY_free(key);
@@ -231,7 +207,6 @@ free_all:
     }
 }
 
-/* Certificate worker thread */
 static void *cert_worker(void *arg) {
     cert_tlstor_t *ct = (cert_tlstor_t *)arg;
     
@@ -251,7 +226,6 @@ static void *cert_worker(void *arg) {
         if (!cert_q_head) cert_q_tail = NULL;
         pthread_mutex_unlock(&cert_q_lock);
 
-        /* Generate certificate */
         generate_cert(job->cert_name, ct->pem_dir, ct->issuer, ct->privkey, ct->cachain);
         
         free(job);
@@ -259,17 +233,14 @@ static void *cert_worker(void *arg) {
     return NULL;
 }
 
-/* Shutdown certificate workers */
 static void shutdown_cert_workers(void) {
     cert_workers_shutdown = 1;
     pthread_cond_broadcast(&cert_q_cond);
 }
 
-/* Enqueue certificate generation job */
 static void enqueue_cert_job(const char *cert_name) {
     cert_job_t *job = malloc(sizeof(*job));
     if (!job) {
-        log_msg(LGG_ERR, "Failed to allocate cert job for %s", cert_name);
         return;
     }
     
@@ -310,12 +281,10 @@ static void sslctx_tbl_dump(int idx, const char * func);
 
 void conn_stor_init(int slots) {
     if (slots < 0) {
-        log_msg(LGG_ERR, "%s invalid slots %d", __FUNCTION__, slots);
         return;
     }
     conn_stor = calloc(slots, sizeof(void *));
     if (!conn_stor) {
-        log_msg(LGG_ERR, "Failed to allocate conn_stor of size %d", slots);
         return;
     }
     conn_stor_last = -1;
@@ -342,7 +311,6 @@ void conn_stor_relinq(conn_tlstor_struct *p) {
     if (conn_stor_last >= conn_stor_max - 1) {
         pthread_mutex_unlock(&cslock);
         free(p);
-        log_msg(LGG_WARNING, "%s conn_stor overflow, freeing directly", __FUNCTION__);
     } else {
         conn_stor[++conn_stor_last] = p;
         pthread_mutex_unlock(&cslock);
@@ -365,7 +333,6 @@ conn_tlstor_struct* conn_stor_acquire() {
             ret->tlsext_cb_arg = &ret->v;
         }
     } else {
-        /* Reset the structure but preserve allocated memory */
         memset(ret, 0, sizeof(conn_tlstor_struct));
         ret->tlsext_cb_arg = &ret->v;
     }
@@ -381,14 +348,12 @@ void sslctx_tbl_init(int tbl_size)
     sslctx_tbl = calloc(tbl_size, sizeof(sslctx_cache_struct));
     if (!sslctx_tbl) {
         sslctx_tbl_size = 0;
-        log_msg(LGG_ERR, "Failed to allocate sslctx_tbl of size %d", tbl_size);
         return;
     }
     
     sslctx_tbl_size = tbl_size;
     sslctx_tbl_cnt_hit = sslctx_tbl_cnt_miss = sslctx_tbl_cnt_purge = sslctx_tbl_last_flush = 0;
     
-    /* Initialize mutexes for each cache entry */
     for (int i = 0; i < tbl_size; i++) {
         pthread_mutex_init(&SSLCTX_TBL_get(i, lock), NULL);
     }
@@ -437,13 +402,11 @@ void sslctx_tbl_load(const char* pem_dir, const STACK_OF(X509_INFO) *cachain)
     FILE *fp = NULL;
     
     if (!(line = malloc(line_len)) || !(fname = malloc(PIXELSERV_MAX_PATH))) {
-        log_msg(LGG_ERR, "%s: failed to allocate memory", __FUNCTION__);
         goto quit_load;
     }
 
     snprintf(fname, PIXELSERV_MAX_PATH, "%s/prefetch", pem_dir);
     if (!(fp = fopen(fname, "r"))) {
-        log_msg(LGG_WARNING, "%s: %s doesn't exist.", __FUNCTION__, fname);
         goto quit_load;
     }
 
@@ -457,7 +420,6 @@ void sslctx_tbl_load(const char* pem_dir, const STACK_OF(X509_INFO) *cachain)
         if (sslctx) {
             int ins_idx = sslctx_tbl_end;
             sslctx_tbl_insert(cert_name, sslctx, ins_idx);
-            log_msg(LGG_NOTICE, "%s: %s", __FUNCTION__, cert_name);
         }
         if (sslctx_tbl_end >= sslctx_tbl_size)
             break;
@@ -466,7 +428,7 @@ void sslctx_tbl_load(const char* pem_dir, const STACK_OF(X509_INFO) *cachain)
     fclose(fp);
     fp = NULL;
     
-    sslctx_tbl_cnt_miss = 0; /* reset */
+    sslctx_tbl_cnt_miss = 0;
     qsort(SSLCTX_TBL_ptr(0), sslctx_tbl_end, sizeof(sslctx_cache_struct), cmp_sslctx_certname);
 
 quit_load:
@@ -482,13 +444,11 @@ void sslctx_tbl_save(const char* pem_dir)
     FILE *fp = NULL;
 
     if (!(fname = malloc(PIXELSERV_MAX_PATH))) {
-        log_msg(LGG_ERR, "%s: failed to allocate memory", __FUNCTION__);
         return;
     }
     
     snprintf(fname, PIXELSERV_MAX_PATH, "%s/prefetch", pem_dir);
     if (!(fp = fopen(fname, "w"))) {
-        log_msg(LGG_ERR, "%s: failed to open %s", __FUNCTION__, fname);
         goto quit_save;
     }
     
@@ -513,7 +473,6 @@ quit_save:
 void sslctx_tbl_lock(int idx)
 {
     if (idx < 0 || idx >= sslctx_tbl_size) {
-        log_msg(LGG_DEBUG, "%s: invalid idx %d", __FUNCTION__, idx);
         return;
     }
     pthread_mutex_lock(&SSLCTX_TBL_get(idx, lock));
@@ -522,7 +481,6 @@ void sslctx_tbl_lock(int idx)
 void sslctx_tbl_unlock(int idx)
 {
     if (idx < 0 || idx >= sslctx_tbl_size) {
-        log_msg(LGG_DEBUG, "%s: invalid idx %d", __FUNCTION__, idx);
         return;
     }
     pthread_mutex_unlock(&SSLCTX_TBL_get(idx, lock));
@@ -532,10 +490,8 @@ static int sslctx_tbl_check_and_flush(void)
 {
     int pixel_now = process_uptime();
 #ifdef DEBUG
-    log_msg(LGG_DEBUG, "%s: now %d last_flush %d", __FUNCTION__, pixel_now, sslctx_tbl_last_flush);
 #endif
 
-    /* flush at most every half of session timeout */
     int do_flush = pixel_now - sslctx_tbl_last_flush - PIXEL_SSL_SESS_TIMEOUT / 2;
     if (do_flush < 0) {
         return -1;
@@ -552,7 +508,6 @@ static int sslctx_tbl_lookup(const char* cert_name, int* found_idx, int* ins_idx
     *ins_idx = -1;
     
     if (!cert_name || !found_idx || !ins_idx) {
-        log_msg(LGG_ERR, "Invalid params. cert_name: %s", cert_name ? cert_name : "NULL");
         return -1;
     }
 
@@ -568,7 +523,6 @@ static int sslctx_tbl_lookup(const char* cert_name, int* found_idx, int* ins_idx
     } else if (sslctx_tbl_end < sslctx_tbl_size) {
         *ins_idx = sslctx_tbl_end;
     } else {
-        /* Find LRU entry to replace */
         int purge_idx = 0;
         unsigned int oldest_use = process_uptime();
 
@@ -586,8 +540,6 @@ static int sslctx_tbl_lookup(const char* cert_name, int* found_idx, int* ins_idx
 static int sslctx_tbl_insert(const char *cert_name, SSL_CTX *sslctx, int ins_idx)
 {
     if (!cert_name || !sslctx || ins_idx >= sslctx_tbl_size || ins_idx < 0) {
-        log_msg(LGG_ERR, "Invalid params. cert_name: %s, ins_idx: %d", 
-                cert_name ? cert_name : "NULL", ins_idx);
         return -1;
     }
     
@@ -600,7 +552,6 @@ static int sslctx_tbl_insert(const char *cert_name, SSL_CTX *sslctx, int ins_idx
     if ((len + 1) > SSLCTX_TBL_get(ins_idx, alloc_len)) {
         str = realloc(str, len + 1);
         if (!str) {
-            log_msg(LGG_ERR, "Failed to allocate memory for cert_name");
             return -1;
         }
         SSLCTX_TBL_set(ins_idx, alloc_len, len + 1);
@@ -615,8 +566,6 @@ static int sslctx_tbl_insert(const char *cert_name, SSL_CTX *sslctx, int ins_idx
         sslctx_tbl_end++;
     } else {
 #ifdef DEBUG
-        log_msg(LGG_DEBUG, "%s: SSL_CTX_free %p sslctx_tbl_end %d", __FUNCTION__, 
-                SSLCTX_TBL_get(ins_idx, sslctx), sslctx_tbl_end);
 #endif
         SSL_CTX_free(SSLCTX_TBL_get(ins_idx, sslctx));
         sslctx_tbl_cnt_purge++;
@@ -657,17 +606,9 @@ static int sslctx_tbl_purge(int idx) {
 static void sslctx_tbl_dump(int idx, const char * func)
 {
     if (idx < 0 || idx >= sslctx_tbl_end) return;
-    
-    log_msg(LGG_DEBUG, "%s: idx %d now %d", func, idx, process_uptime());
-    log_msg(LGG_DEBUG, "** cert_name %s", SSLCTX_TBL_get(idx, cert_name));
-    log_msg(LGG_DEBUG, "** alloc_len %d", SSLCTX_TBL_get(idx, alloc_len));
-    log_msg(LGG_DEBUG, "** last_use %d", SSLCTX_TBL_get(idx, last_use));
-    log_msg(LGG_DEBUG, "** reuse_count %d", SSLCTX_TBL_get(idx, reuse_count));
-    log_msg(LGG_DEBUG, "** sslctx %p", SSLCTX_TBL_get(idx, sslctx));
 }
 #endif
 
-/* OpenSSL threading functions - only for legacy versions */
 #if !OPENSSL_API_1_1
 static void ssl_lock_cb(int mode, int type, const char *file, int line)
 {
@@ -688,11 +629,9 @@ void ssl_init_locks()
 #if !OPENSSL_API_1_1
     int num_locks = CRYPTO_num_locks();
 #ifdef DEBUG
-    log_msg(LGG_DEBUG, "%s: CRYPTO_num_locks = %d", __FUNCTION__, num_locks);
 #endif
     locks = OPENSSL_malloc(num_locks * sizeof(pthread_mutex_t));
     if (!locks) {
-        log_msg(LGG_ERR, "Failed to allocate SSL locks");
         return;
     }
     
@@ -703,8 +642,6 @@ void ssl_init_locks()
     CRYPTO_THREADID_set_callback(ssl_thread_id);
     CRYPTO_set_locking_callback(ssl_lock_cb);
 #else
-    /* OpenSSL 1.1.0+ handles threading automatically */
-    log_msg(LGG_DEBUG, "Using OpenSSL 1.1.0+ automatic threading");
 #endif
 }
 
@@ -737,10 +674,8 @@ static void generate_cert(const char* cert_name,
     EVP_MD_CTX *p_ctx = NULL;
     char *pem_fn = NULL;
     
-    /* Make a copy since we might modify it */
     pem_fn = strdup(cert_name);
     if (!pem_fn) {
-        log_msg(LGG_ERR, "%s: failed to allocate memory for cert name", __FUNCTION__);
         return;
     }
 
@@ -750,22 +685,17 @@ static void generate_cert(const char* cert_name,
     p_ctx = EVP_MD_CTX_create();
 #endif
     if (!p_ctx || EVP_DigestSignInit(p_ctx, NULL, EVP_sha256(), NULL, privkey) != 1) {
-        log_msg(LGG_ERR, "%s: failed to init sign context", __FUNCTION__);
         goto free_all;
     }
 
     if (pem_fn[0] == '_') pem_fn[0] = '*';
 
-    /* Generate key pair */
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-    /* OpenSSL 3.0+ */
     key = EVP_RSA_gen(2048);
     if (!key) {
-        log_msg(LGG_ERR, "%s: failed to generate RSA key", __FUNCTION__);
         goto free_all;
     }
 #elif OPENSSL_API_1_1
-    /* OpenSSL 1.1.x */
     key = EVP_PKEY_new();
     if (!key) goto free_all;
     
@@ -780,7 +710,6 @@ static void generate_cert(const char* cert_name,
     }
     EVP_PKEY_CTX_free(pkey_ctx);
 #else
-    /* Legacy OpenSSL */
     BIGNUM *e = BN_new();
     if (!e) goto free_all;
     BN_set_word(e, RSA_F4);
@@ -801,33 +730,27 @@ static void generate_cert(const char* cert_name,
 #endif
 
 #ifdef DEBUG
-    log_msg(LGG_DEBUG, "%s: RSA key generated for [%s]", __FUNCTION__, pem_fn);
 #endif
 
-    /* Create certificate */
     x509 = X509_new();
     if (!x509) goto free_all;
     
     ASN1_INTEGER_set(X509_get_serialNumber(x509), rand());
-    X509_set_version(x509, 2); /* X509 v3 */
+    X509_set_version(x509, 2);
     
-    /* Random NotBefore date between -864000 and -172800 seconds */
     int offset = -(rand() % (864000 - 172800 + 1) + 172800);
     X509_gmtime_adj(X509_get_notBefore(x509), offset);
-    X509_gmtime_adj(X509_get_notAfter(x509), 3600*24*390L); /* 390 days */
+    X509_gmtime_adj(X509_get_notAfter(x509), 3600*24*390L);
     
     X509_set_issuer_name(x509, issuer);
     X509_NAME *name = X509_get_subject_name(x509);
     X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (unsigned char *)pem_fn, -1, -1, 0);
 
-    /* Enhanced IP detection instead of the dot counting logic */
     int ip_version = is_ip_address(pem_fn);
     if (ip_version > 0) {
         snprintf(san_str, sizeof(san_str), "IP:%s", pem_fn);
-        log_msg(LGG_DEBUG, "Detected IPv%d address: %s", ip_version, pem_fn);
     } else {
         snprintf(san_str, sizeof(san_str), "DNS:%s", pem_fn);
-        log_msg(LGG_DEBUG, "Detected domain name: %s", pem_fn);
     }
     
     ext = X509V3_EXT_conf_nid(NULL, NULL, NID_subject_alt_name, san_str);
@@ -844,23 +767,18 @@ static void generate_cert(const char* cert_name,
     X509_sign_ctx(x509, p_ctx);
 
 #ifdef DEBUG
-    log_msg(LGG_DEBUG, "%s: X509 cert created", __FUNCTION__);
 #endif
 
-    /* Save certificate to file */
     if (pem_fn[0] == '*') pem_fn[0] = '_';
     snprintf(fname, PIXELSERV_MAX_PATH, "%s/%s", pem_dir, pem_fn);
     
     FILE *fp = fopen(fname, "wb");
     if (!fp) {
-        log_msg(LGG_ERR, "%s: failed to open file for write: %s", __FUNCTION__, fname);
         goto free_all;
     }
 
-    /* Write certificate */
     PEM_write_X509(fp, x509);
 
-    /* Write CA chain */
     if (cachain) {
         for (int i = 0; i < sk_X509_INFO_num(cachain); i++) {
             X509_INFO *xi = sk_X509_INFO_value(cachain, i);
@@ -870,11 +788,8 @@ static void generate_cert(const char* cert_name,
         }
     }
 
-    /* Write private key */
     PEM_write_PrivateKey(fp, key, NULL, NULL, 0, NULL, NULL);
     fclose(fp);
-    
-    log_msg(LGG_NOTICE, "cert generated to disk: %s", pem_fn);
 
 free_all:
     free(pem_fn);
@@ -898,16 +813,14 @@ static int pem_passwd_cb(char *buf, int size, int rwflag, void *u) {
         goto quit_cb;
 
     if ((fp = open(fname, O_RDONLY)) < 0) {
-        log_msg(LGG_ERR, "%s: failed to open ca.key.passphrase", __FUNCTION__);
     } else {
         rv = read(fp, buf, size - 1);
         close(fp);
         if (rv > 0 && buf[rv-1] == '\n') {
-            rv--; /* trim newline */
+            rv--;
         }
         if (rv > 0) buf[rv] = '\0';
 #ifdef DEBUG
-        log_msg(LGG_DEBUG, "%s: passphrase length %d", __FUNCTION__, rv);
 #endif
     }
 
@@ -924,35 +837,29 @@ void cert_tlstor_init(const char *pem_dir, cert_tlstor_t *ct)
 
     memset(ct, 0, sizeof(cert_tlstor_t));
     
-    /* Load CA certificate */
     snprintf(cert_file, PIXELSERV_MAX_PATH, "%s/rootCA/ca.crt", pem_dir);
     fp = fopen(cert_file, "r");
     x509 = X509_new();
 
     if (!fp || !x509 || !PEM_read_X509(fp, &x509, NULL, NULL)) {
-        log_msg(LGG_ERR, "%s: failed to load ca.crt", __FUNCTION__);
         goto cleanup_ca;
     }
 
-    /* Read entire CA file for chain */
     char *cafile = NULL;
     long fsz;
     
     if (fseek(fp, 0L, SEEK_END) < 0 || (fsz = ftell(fp)) < 0 || fseek(fp, 0L, SEEK_SET) < 0) {
-        log_msg(LGG_ERR, "%s: failed to seek ca.crt", __FUNCTION__);
         goto cleanup_ca;
     }
 
     cafile = malloc(fsz + 1);
     if (!cafile || fread(cafile, 1, fsz, fp) != (size_t)fsz) {
-        log_msg(LGG_ERR, "%s: failed to read ca.crt", __FUNCTION__);
         free(cafile);
         goto cleanup_ca;
     }
 
     BIO *bioin = BIO_new_mem_buf(cafile, fsz);
     if (!bioin) {
-        log_msg(LGG_ERR, "%s: failed to create BIO mem buffer", __FUNCTION__);
         free(cafile);
         goto cleanup_ca;
     }
@@ -962,7 +869,6 @@ void cert_tlstor_init(const char *pem_dir, cert_tlstor_t *ct)
     ct->issuer = X509_NAME_dup(X509_get_subject_name(x509));
 
     if (!ct->cachain) {
-        log_msg(LGG_ERR, "%s: failed to read CA chains", __FUNCTION__);
     }
 
     BIO_free(bioin);
@@ -972,15 +878,12 @@ cleanup_ca:
     if (fp) fclose(fp);
     X509_free(x509);
 
-    /* Load CA private key */
     snprintf(cert_file, PIXELSERV_MAX_PATH, "%s/rootCA/ca.key", pem_dir);
     fp = fopen(cert_file, "r");
     if (!fp || !PEM_read_PrivateKey(fp, &ct->privkey, pem_passwd_cb, (void*)pem_dir)) {
-        log_msg(LGG_ERR, "%s: failed to load ca.key", __FUNCTION__);
     }
     if (fp) fclose(fp);
 
-    /* Generate universal IP certificate on startup */
     char universal_ip_file[PIXELSERV_MAX_PATH];
     snprintf(universal_ip_file, sizeof(universal_ip_file), "%s/universal_ips.pem", pem_dir);
     struct stat st;
@@ -988,14 +891,11 @@ cleanup_ca:
         generate_universal_ip_cert(pem_dir, ct->issuer, ct->privkey, ct->cachain);
     }
 
-    /* Start worker threads for certificate generation */
     cert_workers_shutdown = 0;
     for (int i = 0; i < 4; i++) {
         pthread_t tid;
         if (pthread_create(&tid, NULL, cert_worker, ct) == 0) {
             pthread_detach(tid);
-        } else {
-            log_msg(LGG_ERR, "cert_worker: pthread_create failed");
         }
     }
 }
@@ -1015,7 +915,6 @@ void cert_tlstor_cleanup(cert_tlstor_t *c)
 
 void *cert_generator(void *ptr) {
 #ifdef DEBUG
-    log_msg(LGG_DEBUG, "%s: thread up and running", __FUNCTION__);
 #endif
     int idle = 0;
     cert_tlstor_t *ct = (cert_tlstor_t *) ptr;
@@ -1029,7 +928,6 @@ void *cert_generator(void *ptr) {
 
     while (!cert_workers_shutdown) {
         if (fd == -1) {
-            log_msg(LGG_ERR, "%s: failed to open %s: %s", __FUNCTION__, pixel_cert_pipe, strerror(errno));
             sleep(1);
             fd = open(pixel_cert_pipe, O_RDONLY | O_NONBLOCK);
             continue;
@@ -1040,7 +938,6 @@ void *cert_generator(void *ptr) {
         int ret = poll(&pfd, 1, 1000 * PIXEL_SSL_SESS_TIMEOUT / 4);
         
         if (ret <= 0) {
-            /* timeout */
             sslctx_tbl_check_and_flush();
             if (kcc == 0) {
                 if (++idle >= (3600 / (PIXEL_SSL_SESS_TIMEOUT / 4))) {
@@ -1057,7 +954,6 @@ void *cert_generator(void *ptr) {
         ssize_t cnt = read(fd, buf + strlen(half_token), PIXELSERV_MAX_SERVER_NAME * 4 - strlen(half_token));
         if (cnt == 0) {
 #ifdef DEBUG
-            log_msg(LGG_DEBUG, "%s: pipe EOF", __FUNCTION__);
 #endif
             close(fd);
             fd = open(pixel_cert_pipe, O_RDONLY | O_NONBLOCK);
@@ -1085,7 +981,7 @@ void *cert_generator(void *ptr) {
             struct stat st;
             snprintf(cert_file, PIXELSERV_MAX_PATH, "%s/%s", ct->pem_dir, p_buf);
             
-            if (stat(cert_file, &st) != 0) { /* doesn't exist */
+            if (stat(cert_file, &st) != 0) {
                 enqueue_cert_job(p_buf);
             }
             p_buf = strtok_r(NULL, ":", &p_buf_sav);
@@ -1108,7 +1004,6 @@ static const unsigned char *get_server_name(SSL *s, size_t *len)
         remaining <= 2)
         return NULL;
         
-    /* Extract the length of the supplied list of names. */
     size_t list_len = (*(p++) << 8);
     list_len += *(p++);
     if (list_len + 2 != remaining)
@@ -1144,14 +1039,12 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
     int len;
 
     if (!cbarg || !cbarg->tls_pem) {
-        log_msg(LGG_ERR, "%s: invalid callback arguments", __FUNCTION__);
         rv = CB_ERR;
         goto quit_cb;
     }
 
     len = strlen(cbarg->tls_pem);
     if (len >= PIXELSERV_MAX_PATH) {
-        log_msg(LGG_ERR, "%s: path too long", __FUNCTION__);
         rv = CB_ERR;
         goto quit_cb;
     }
@@ -1181,17 +1074,14 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
         if (strlen(cbarg->servername) > 0) {
             srv_name = cbarg->servername;
         } else {
-            log_msg(LGG_WARNING, "SNI failed. server name and ip empty.");
             rv = CB_ERR;
             goto quit_cb;
         }
     }
 
 #ifdef DEBUG
-    log_msg(LGG_DEBUG, "SNI servername: %s", srv_name);
 #endif
 
-    /* Check if this is an IP address - if so, use universal IP cert */
     if (is_ip_address(srv_name)) {
         char universal_ip_path[PIXELSERV_MAX_PATH];
         snprintf(universal_ip_path, sizeof(universal_ip_path), "%s/universal_ips.pem", cbarg->tls_pem);
@@ -1202,13 +1092,11 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
             if (ip_ctx) {
                 SSL_set_SSL_CTX(ssl, ip_ctx);
                 cbarg->status = SSL_HIT;
-                log_msg(LGG_DEBUG, "🔒 Using universal IP cert for: %s", srv_name);
                 goto quit_cb;
             }
         }
     }
 
-    /* Determine certificate filename based on domain structure */
     int dot_count = 0;
     const char *tld = NULL;
     const char *dot_pos = strchr(srv_name, '.');
@@ -1237,24 +1125,20 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
     }
 
 #ifdef DEBUG
-    log_msg(LGG_DEBUG, "PEM filename: %s", full_pem_path);
 #endif
 
     if (len > PIXELSERV_MAX_PATH) {
-        log_msg(LGG_ERR, "%s: buffer overflow. %s", __FUNCTION__, full_pem_path);
         rv = CB_ERR;
         goto quit_cb;
     }
 
     int handle, ins_handle;
     if (sslctx_tbl_lookup(pem_file, &handle, &ins_handle) != 0) {
-        log_msg(LGG_ERR, "%s: sslctx_tbl_lookup failed", __FUNCTION__);
         rv = CB_ERR;
         goto quit_cb;
     }
 
 #ifdef DEBUG
-    log_msg(LGG_DEBUG, "%s: handle %d ins_handle %d", __FUNCTION__, handle, ins_handle);
     if (handle >= 0) sslctx_tbl_dump(handle, __FUNCTION__);
     if (ins_handle >= 0) sslctx_tbl_dump(ins_handle, __FUNCTION__);
 #endif
@@ -1262,31 +1146,24 @@ static int tls_servername_cb(SSL *ssl, int *ad, void *arg) {
     if (handle >= 0) {
         SSL_set_SSL_CTX(ssl, SSLCTX_TBL_get(handle, sslctx));
         
-        /* Check certificate expiration */
         X509 *cert = SSL_get_certificate(ssl);
         if (cert && X509_cmp_time(X509_get_notAfter(cert), NULL) > 0) {
             cbarg->status = SSL_HIT;
             goto quit_cb;
         }
         
-        /* Certificate expired */
         cbarg->status = SSL_ERR;
-        log_msg(LGG_WARNING, "Expired certificate %s", pem_file);
         sslctx_tbl_purge(handle);
         remove(full_pem_path);
         goto submit_missing_cert;
     }
 
-    /* Check if certificate file exists */
     struct stat st;
     if (stat(full_pem_path, &st) != 0) {
         cbarg->status = SSL_MISS;
         
-        /* Artificial delay for missing certificate */
-        struct timespec delay = {0, 300 * 1000000}; /* 300ms */
+        struct timespec delay = {0, 300 * 1000000};
         nanosleep(&delay, NULL);
-
-        log_msg(LGG_WARNING, "%s %s missing", srv_name, pem_file);
 
 submit_missing_cert:
         enqueue_cert_job(pem_file);
@@ -1294,10 +1171,8 @@ submit_missing_cert:
         goto quit_cb;
     }
 
-    /* Load certificate from disk */
     SSL_CTX *sslctx = create_child_sslctx(full_pem_path, cbarg->cachain);
     if (!sslctx) {
-        log_msg(LGG_ERR, "%s: fail to create sslctx for %s", __FUNCTION__, pem_file);
         cbarg->status = SSL_ERR;
         rv = CB_ERR;
         goto quit_cb;
@@ -1305,17 +1180,14 @@ submit_missing_cert:
 
     SSL_set_SSL_CTX(ssl, sslctx);
     
-    /* Check certificate expiration again */
     X509 *cert = SSL_get_certificate(ssl);
     if (cert && X509_cmp_time(X509_get_notAfter(cert), NULL) < 0) {
         cbarg->status = SSL_ERR;
-        log_msg(LGG_WARNING, "Expired certificate %s", pem_file);
         remove(full_pem_path);
         goto submit_missing_cert;
     }
 
     if (sslctx_tbl_cache(pem_file, sslctx, ins_handle) < 0) {
-        log_msg(LGG_ERR, "%s: fail to cache sslctx for %s", __FUNCTION__, pem_file);
         cbarg->status = SSL_ERR;
         rv = CB_ERR;
         goto quit_cb;
@@ -1331,20 +1203,15 @@ static SSL_CTX* create_child_sslctx(const char* full_pem_path, const STACK_OF(X5
 {
     SSL_CTX *sslctx = SSL_CTX_new(TLS_server_method());
     if (!sslctx) {
-        log_msg(LGG_ERR, "%s: SSL_CTX_new failed", __FUNCTION__);
         return NULL;
     }
 
-    /* Set up ECDH */
 #if OPENSSL_VERSION_NUMBER >= 0x10101000L
-    /* OpenSSL 1.1.1+ */
     int groups[] = { NID_X9_62_prime256v1, NID_secp384r1 };
     SSL_CTX_set1_groups(sslctx, groups, sizeof(groups)/sizeof(groups[0]));
 #elif OPENSSL_VERSION_NUMBER >= 0x10100000L
-    /* OpenSSL 1.1.0 */
     SSL_CTX_set_ecdh_auto(sslctx, 1);
 #else
-    /* Legacy OpenSSL */
     EC_KEY *ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
     if (ecdh) {
         SSL_CTX_set_tmp_ecdh(sslctx, ecdh);
@@ -1352,7 +1219,6 @@ static SSL_CTX* create_child_sslctx(const char* full_pem_path, const STACK_OF(X5
     }
 #endif
 
-    /* Set SSL options */
     long options = SSL_OP_SINGLE_DH_USE |
                    SSL_OP_NO_COMPRESSION |
                    SSL_OP_NO_TICKET |
@@ -1370,33 +1236,26 @@ static SSL_CTX* create_child_sslctx(const char* full_pem_path, const STACK_OF(X5
 
     SSL_CTX_set_options(sslctx, options);
 
-    /* Session cache settings */
     SSL_CTX_set_session_cache_mode(sslctx, SSL_SESS_CACHE_NO_AUTO_CLEAR | SSL_SESS_CACHE_SERVER);
     SSL_CTX_set_timeout(sslctx, PIXEL_SSL_SESS_TIMEOUT);
     SSL_CTX_sess_set_cache_size(sslctx, 1);
 
-    /* Set cipher lists */
     if (SSL_CTX_set_cipher_list(sslctx, PIXELSERV_CIPHER_LIST) <= 0) {
-        log_msg(LGG_DEBUG, "%s: failed to set cipher list", __FUNCTION__);
     }
 
 #ifdef TLS1_3_VERSION
     SSL_CTX_set_min_proto_version(sslctx, TLS1_VERSION);
     SSL_CTX_set_max_proto_version(sslctx, TLS1_3_VERSION);
     if (SSL_CTX_set_ciphersuites(sslctx, PIXELSERV_TLSV1_3_CIPHERS) <= 0) {
-        log_msg(LGG_DEBUG, "%s: failed to set TLSv1.3 ciphersuites", __FUNCTION__);
     }
 #endif
 
-    /* Load certificate and private key */
     if (SSL_CTX_use_certificate_file(sslctx, full_pem_path, SSL_FILETYPE_PEM) <= 0 ||
         SSL_CTX_use_PrivateKey_file(sslctx, full_pem_path, SSL_FILETYPE_PEM) <= 0) {
         SSL_CTX_free(sslctx);
-        log_msg(LGG_ERR, "%s: cannot find or use %s", __FUNCTION__, full_pem_path);
         return NULL;
     }
 
-    /* Add CA chain */
     if (cachain) {
         for (int i = sk_X509_INFO_num(cachain) - 1; i >= 0; i--) {
             X509_INFO *inf = sk_X509_INFO_value(cachain, i);
@@ -1405,7 +1264,6 @@ static SSL_CTX* create_child_sslctx(const char* full_pem_path, const STACK_OF(X5
                 if (!cert_copy || !SSL_CTX_add_extra_chain_cert(sslctx, cert_copy)) {
                     X509_free(cert_copy);
                     SSL_CTX_free(sslctx);
-                    log_msg(LGG_ERR, "%s: cannot add CA cert %d", __FUNCTION__, i);
                     return NULL;
                 }
             }
@@ -1421,7 +1279,6 @@ SSL_CTX* create_default_sslctx(const char *pem_dir)
 
     g_sslctx = SSL_CTX_new(TLS_server_method());
     if (!g_sslctx) {
-        log_msg(LGG_ERR, "Failed to create default SSL context");
         return NULL;
     }
 
@@ -1444,7 +1301,6 @@ SSL_CTX* create_default_sslctx(const char *pem_dir)
     SSL_CTX_set_timeout(g_sslctx, PIXEL_SSL_SESS_TIMEOUT);
 
     if (SSL_CTX_set_cipher_list(g_sslctx, PIXELSERV_CIPHER_LIST) <= 0) {
-        log_msg(LGG_DEBUG, "cipher_list cannot be set");
     }
 
 #ifdef TLS1_3_VERSION
@@ -1469,7 +1325,6 @@ int is_ssl_conn(int fd, char *srv_ip, int srv_ip_len, const int *ssl_ports, int 
                    server_ip, sizeof server_ip,
                    port, sizeof port,
                    NI_NUMERICHOST | NI_NUMERICSERV) != 0) {
-        log_msg(LGG_ERR, "getnameinfo: %s", strerror(errno));
         return 0;
     }
     
@@ -1491,7 +1346,6 @@ int is_ssl_conn(int fd, char *srv_ip, int srv_ip_len, const int *ssl_ports, int 
     getpeername(fd, (struct sockaddr*)&sin_addr, &sin_addr_len);
     if (getnameinfo((struct sockaddr *)&sin_addr, sin_addr_len, client_ip,
                    sizeof client_ip, NULL, 0, NI_NUMERICHOST) == 0) {
-        log_msg(LGG_DEBUG, "** NEW CONNECTION ** %s:%s", client_ip, port);
     }
 #endif
 
@@ -1504,7 +1358,6 @@ char* read_tls_early_data(SSL *ssl, int *err)
     size_t buf_siz = PIXEL_TLS_EARLYDATA_SIZE;
     char *buf = malloc(PIXEL_TLS_EARLYDATA_SIZE + 1);
     if (!buf) {
-        log_msg(LGG_DEBUG, "%s out of memory", __FUNCTION__);
         *err = SSL_ERROR_SYSCALL;
         return NULL;
     }
@@ -1530,32 +1383,27 @@ char* read_tls_early_data(SSL *ssl, int *err)
             pbuf += readbytes;
             buf_siz -= readbytes;
             if (buf_siz <= 0) {
-                log_msg(LGG_DEBUG, "%s buffer full", __FUNCTION__);
                 goto err_quit;
             }
             continue;
         }
 
-        /* SSL_READ_EARLY_DATA_ERROR */
         switch (SSL_get_error(ssl, 0)) {
         case SSL_ERROR_WANT_WRITE:
         case SSL_ERROR_WANT_READ:
         case SSL_ERROR_WANT_ASYNC:
-            if (count++ < 10) { /* 600ms total */
-                struct timespec delay = {0, 60000000}; /* 60ms */
+            if (count++ < 10) {
+                struct timespec delay = {0, 60000000};
                 nanosleep(&delay, NULL);
                 continue;
             }
-            /* fall through */
         default:
             *err = SSL_get_error(ssl, 0);
-            log_msg(LGG_DEBUG, "%s error: %d count: %d", __FUNCTION__, *err, count);
             goto err_quit;
         }
     }
 
 #ifdef DEBUG
-    log_msg(LGG_DEBUG, "%s buf: %s", __FUNCTION__, buf);
 #endif
 
     return buf;
@@ -1569,7 +1417,6 @@ err_quit:
 void run_benchmark(const cert_tlstor_t *ct, const char *cert)
 {
     if (!ct || !ct->pem_dir) {
-        log_msg(LGG_ERR, "Invalid certificate storage or pem_dir");
         return;
     }
 
@@ -1606,7 +1453,6 @@ void run_benchmark(const cert_tlstor_t *ct, const char *cert)
     
     if (domain[0] == '_') domain[0] = '*';
 
-    /* Benchmark certificate generation and loading */
     for (int c = 1; c <= 10; c++) {
         get_time(&tm);
         for (int d = 0; d < 5; d++) {
@@ -1622,8 +1468,6 @@ void run_benchmark(const cert_tlstor_t *ct, const char *cert)
                 sslctx = create_child_sslctx(cert_file, ct->cachain);
                 if (sslctx) {
                     sslctx_tbl_cache(test_cert, sslctx, 0);
-                } else {
-                    log_msg(LGG_WARNING, "Failed to create SSL context for %s", cert_file);
                 }
             }
         }
@@ -1640,9 +1484,6 @@ quit:
     free(domain);
 }
 
-/* Additional utility functions */
-
-/* Get SSL context from cache by name */
 SSL_CTX* sslctx_tbl_get_ctx(const char *cert_name) {
     if (!cert_name) return NULL;
     
@@ -1653,18 +1494,15 @@ SSL_CTX* sslctx_tbl_get_ctx(const char *cert_name) {
     return NULL;
 }
 
-/* Certificate validation */
 int validate_certificate_chain(SSL_CTX *ctx) {
     if (!ctx) return 0;
     
     X509_STORE *store = SSL_CTX_get_cert_store(ctx);
     if (!store) return 0;
     
-    /* Additional validation logic can be added here */
     return 1;
 }
 
-/* Enhanced certificate expiration check */
 int check_cert_expiration(const char *cert_path, time_t *expires_at) {
     FILE *fp = fopen(cert_path, "r");
     if (!fp) return -1;
@@ -1693,18 +1531,15 @@ int check_cert_expiration(const char *cert_path, time_t *expires_at) {
     return -1;
 }
 
-/* Enhanced error reporting for certificate operations */
 void log_ssl_errors(const char *operation) {
     unsigned long err;
     char err_buf[256];
     
     while ((err = ERR_get_error()) != 0) {
         ERR_error_string_n(err, err_buf, sizeof(err_buf));
-        log_msg(LGG_ERR, "%s: %s", operation, err_buf);
     }
 }
 
-/* Cleanup expired certificates from cache */
 void sslctx_tbl_cleanup_expired(void) {
     time_t now = time(NULL);
     
@@ -1716,15 +1551,12 @@ void sslctx_tbl_cleanup_expired(void) {
         if (!cert) continue;
         
         if (X509_cmp_time(X509_get_notAfter(cert), &now) < 0) {
-            log_msg(LGG_NOTICE, "Removing expired certificate from cache: %s", 
-                    SSLCTX_TBL_get(i, cert_name));
             sslctx_tbl_purge(i);
-            i--; /* Adjust index after removal */
+            i--;
         }
     }
 }
 
-/* Memory usage statistics */
 size_t sslctx_tbl_memory_usage(void) {
     size_t total = 0;
     
@@ -1732,14 +1564,12 @@ size_t sslctx_tbl_memory_usage(void) {
     
     for (int i = 0; i < sslctx_tbl_end; i++) {
         total += SSLCTX_TBL_get(i, alloc_len);
-        /* SSL_CTX memory is harder to calculate, estimate conservatively */
-        total += 64 * 1024; /* ~64KB per SSL_CTX */
+        total += 64 * 1024;
     }
     
     return total;
 }
 
-/* Certificate pre-generation for common domains */
 void pregenerate_common_certs(cert_tlstor_t *ct) {
     const char *common_domains[] = {
         "google.com", "facebook.com", "amazon.com", "microsoft.com",
@@ -1749,21 +1579,15 @@ void pregenerate_common_certs(cert_tlstor_t *ct) {
     };
     
     if (!ct || !ct->privkey || !ct->issuer) {
-        log_msg(LGG_WARNING, "Cannot pregenerate certs: invalid cert_tlstor");
         return;
     }
-    
-    log_msg(LGG_NOTICE, "Pre-generating certificates for common domains...");
     
     int i;
     for (i = 0; common_domains[i]; i++) {
         enqueue_cert_job(common_domains[i]);
     }
-    
-    log_msg(LGG_NOTICE, "Queued %d certificates for pre-generation", i);
 }
 
-/* Statistics for monitoring */
 void print_cert_statistics(void) {
     printf("\n=== Certificate Statistics ===\n");
     printf("Cache entries: %d/%d\n", sslctx_tbl_get_cnt_total(), sslctx_tbl_size);
