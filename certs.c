@@ -88,15 +88,13 @@ static void generate_universal_ip_cert(const char *pem_dir,
     X509_EXTENSION *ext = NULL;
     EVP_MD_CTX *p_ctx = NULL;
     
-    char mega_san[2048];
-    strcpy(mega_san, 
+    const char *mega_san =
         "IP:127.0.0.1,IP:127.0.0.254,"
         "IP:10.0.0.1,IP:10.255.255.254,"
         "IP:192.168.0.1,IP:192.168.255.254,"
         "IP:172.16.0.1,IP:172.31.255.254,"
         "IP:192.168.1.1,IP:192.168.0.1,IP:10.0.0.1,"
-        "DNS:localhost,DNS:*.local,DNS:*.lan"
-    );
+        "DNS:localhost,DNS:*.local,DNS:*.lan";
 
 #if OPENSSL_API_1_1
     p_ctx = EVP_MD_CTX_new();
