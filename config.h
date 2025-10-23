@@ -1,19 +1,19 @@
 /* config.h.  Generated from config.h.in by configure.  */
 /* config.h.in.  Generated from configure.ac by autoheader.  */
 
-/* Define to 1 if you have the 'crypto' library (-lcrypto). */
+/* Define to 1 if you have the `crypto' library (-lcrypto). */
 #define HAVE_LIBCRYPTO 1
 
-/* Define to 1 if you have the 'dl' library (-ldl). */
+/* Define to 1 if you have the `dl' library (-ldl). */
 #define HAVE_LIBDL 1
 
-/* Define to 1 if you have the 'pthread' library (-lpthread). */
+/* Define to 1 if you have the `pthread' library (-lpthread). */
 #define HAVE_LIBPTHREAD 1
 
-/* Define to 1 if you have the 'rt' library (-lrt). */
+/* Define to 1 if you have the `rt' library (-lrt). */
 #define HAVE_LIBRT 1
 
-/* Define to 1 if you have the 'ssl' library (-lssl). */
+/* Define to 1 if you have the `ssl' library (-lssl). */
 #define HAVE_LIBSSL 1
 
 /* Name of package */
