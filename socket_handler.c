@@ -428,11 +428,12 @@ char from_hex(const char ch) {
   return isdigit(ch) ? ch - '0' : tolower(ch) - 'a' + 10;
 }
 
-void urldecode(char* const decoded, char* const encoded) {
+void urldecode(char* const decoded, size_t max_len, char* const encoded) {
   char* pstr = encoded;
   char* pbuf = decoded;
+  char* pbuf_end = decoded + max_len - 1;  /* Reserve space for null terminator */
 
-  while (*pstr) {
+  while (*pstr && pbuf < pbuf_end) {
     if (*pstr == '%') {
       if (pstr[1] && pstr[2]) {
         *pbuf++ = from_hex(pstr[1]) << 4 | from_hex(pstr[2]);
@@ -1099,11 +1100,12 @@ write_socket(config.new_fd,
             rsize = sizeof httpnullpixel - 1;
           } else {
             if (config.do_redirect && strcasestr(path, "=http")) {
-              char *decoded = malloc(strlen(path)+1);
+              size_t path_len = strlen(path) + 1;
+              char *decoded = malloc(path_len);
               if (decoded) {
-                urldecode(decoded, path);
+                urldecode(decoded, path_len, path);
 
-                urldecode(path, decoded);
+                urldecode(path, path_len, decoded);
                 free(decoded);
                 url = strstr_last(path, "http://");
                 if (url == NULL) {
